@@ -1,0 +1,23 @@
+# Bağımlılıklar
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Veri dosyaları (sunucuda ayrı tutulacak)
+backend/data.json
+backend/uploads/
+
+# Build çıktısı (backend/public'e kopyalanacak)
+frontend/dist/
+
+# Log dosyaları
+*.log
+npm-debug.log*
+
+# Ortam değişkenleri
+.env
+.env.local
+
+# OS dosyaları
+.DS_Store
+Thumbs.db
