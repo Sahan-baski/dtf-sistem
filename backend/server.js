@@ -14,14 +14,15 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.join(__dirname, './uploads')));
 
-app.use('/api/auth',      require('./routes/auth'));
+app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/siparisler',authMiddleware, require('./routes/siparisler'));
-app.use('/api/gorevler',  authMiddleware, require('./routes/gorevler'));
-app.use('/api/shopier',   authMiddleware, require('./routes/shopier'));
+app.use('/api/gorevler', authMiddleware, require('./routes/gorevler'));
+app.use('/api/shopier',  authMiddleware, require('./routes/shopier'));
 app.use('/api/musteriler',authMiddleware, require('./routes/musteriler'));
-app.use('/api/dosyalar',  authMiddleware, require('./routes/dosyalar'));
-app.use('/api/ozet',      authMiddleware, require('./routes/ozet'));
-app.use('/api/urunler',   authMiddleware, require('./routes/urunler'));
+app.use('/api/dosyalar', authMiddleware, require('./routes/dosyalar'));
+app.use('/api/ozet',     authMiddleware, require('./routes/ozet'));
+app.use('/api/urunler',  authMiddleware, require('./routes/urunler'));
+app.use('/api/ayarlar',  authMiddleware, require('./routes/ayarlar'));
 
 app.get('/api/ping', (req, res) => res.json({ durum: 'aktif', zaman: new Date().toISOString() }));
 app.use(express.static(path.join(__dirname, './public')));

@@ -84,3 +84,9 @@ export const urunApi = {
   toggle: (id) => api.patch(`/urunler/${id}/toggle`),
   delete: (id) => api.delete(`/urunler/${id}`),
 };
+
+export const ayarlarApi = {
+  get: () => api.get('/ayarlar'),
+  save: (d) => api.post('/ayarlar', d),
+  hesaplaTeslimTarihi: (press_sayisi) => api.get('/ayarlar/teslim-tarihi', { params: { press_sayisi } }),
+};

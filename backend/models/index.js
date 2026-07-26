@@ -1,39 +1,38 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
-// Sipariş
 const SiparisSchema = new Schema({
-  siparis_no:       { type: String, unique: true },
-  dis_siparis_no:   String,
-  musteri_adi:      { type: String, required: true },
-  musteri_soyadi:   String,
-  musteri_telefon:  String,
-  musteri_adres:    String,
-  urunler:          [{ ad: String, adet: Number, fiyat: Number }],
-  notlar:           String,
-  teslim_tarihi:    String,
-  durum:            { type: String, default: 'bekliyor', enum: ['bekliyor','hazirlaniyor','hazir','kargoda','teslim_edildi'] },
-  kaynak:           { type: String, default: 'manuel' },
-  kategori:         String,
-  asamalar:         [{ key: String, label: String, tamamlandi: { type: Boolean, default: false } }],
+  siparis_no:           { type: String, unique: true },
+  dis_siparis_no:       String,
+  musteri_adi:          { type: String, required: true },
+  musteri_soyadi:       String,
+  musteri_telefon:      String,
+  musteri_adres:        String,
+  urunler:              [{ ad: String, adet: Number, fiyat: Number }],
+  notlar:               String,
+  teslim_tarihi:        String,
+  press_sayisi:         { type: Number, default: 0 }, // kaç press gerekiyor
+  durum:                { type: String, default: 'bekliyor', enum: ['bekliyor','hazirlaniyor','hazir','kargoda','teslim_edildi'] },
+  kaynak:               { type: String, default: 'manuel' },
+  kategori:             String,
+  asamalar:             [{ key: String, label: String, tamamlandi: { type: Boolean, default: false } }],
   odeme: {
-    tutar:          { type: Number, default: 0 },
-    odenen:         { type: Number, default: 0 },
-    odendi:         { type: Boolean, default: false },
-    yontem:         String,
-    fatura_kesildi: { type: Boolean, default: false },
-    odeme_tarihi:   String,
-    notlar:         String,
+    tutar:              { type: Number, default: 0 },
+    odenen:             { type: Number, default: 0 },
+    odendi:             { type: Boolean, default: false },
+    yontem:             String,
+    fatura_kesildi:     { type: Boolean, default: false },
+    odeme_tarihi:       String,
+    notlar:             String,
   },
   kargo: {
-    takip_no:       String,
-    firma:          String,
-    gonderim_tarihi:String,
+    takip_no:           String,
+    firma:              String,
+    gonderim_tarihi:    String,
   },
   teslim_edildi_tarihi: String,
 }, { timestamps: true });
 
-// Görev
 const GorevSchema = new Schema({
   baslik:      { type: String, required: true },
   aciklama:    String,
@@ -42,7 +41,6 @@ const GorevSchema = new Schema({
   tamamlanma_tarihi: String,
 }, { timestamps: true });
 
-// Müşteri
 const MusteriSchema = new Schema({
   ad:            { type: String, required: true },
   soyad:         String,
@@ -54,7 +52,6 @@ const MusteriSchema = new Schema({
   notlar:        String,
 }, { timestamps: true });
 
-// Dosya
 const DosyaSchema = new Schema({
   siparis_id:   String,
   orijinal_ad:  String,
@@ -64,7 +61,6 @@ const DosyaSchema = new Schema({
   yuklenme:     String,
 }, { timestamps: true });
 
-// Ayarlar (tek döküman)
 const AyarSchema = new Schema({
   anahtar: { type: String, unique: true },
   deger:   Schema.Types.Mixed,
