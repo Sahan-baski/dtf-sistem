@@ -8,7 +8,6 @@ const UserSchema = new mongoose.Schema({
   soyad:         { type: String, default: '' },
   rol:           { type: String, enum: ['admin','calisan','musteri'], default: 'calisan' },
   aktif:         { type: Boolean, default: true },
-  // Müşteri ek bilgileri
   firma_adi:     { type: String, default: '' },
   telefon:       { type: String, default: '' },
   email:         { type: String, default: '' },
@@ -17,10 +16,10 @@ const UserSchema = new mongoose.Schema({
   onay_bekliyor: { type: Boolean, default: false },
 }, { timestamps: true });
 
-UserSchema.pre('save', async function(next) {
-  if (!this.isModified('sifre')) return next();
+// next parametresi olmadan async kullan — Mongoose 6+ promise tabanlı
+UserSchema.pre('save', async function() {
+  if (!this.isModified('sifre')) return;
   this.sifre = await bcrypt.hash(this.sifre, 10);
-  next();
 });
 
 UserSchema.methods.sifreKontrol = function(sifre) {
