@@ -9,21 +9,25 @@ import MusterilerPage from './pages/MusterilerPage';
 import KullaniciYonetimiPage from './pages/KullaniciYonetimiPage';
 import UrunlerPage from './pages/UrunlerPage';
 import AyarlarPage from './pages/AyarlarPage';
+import IstatistiklerPage from './pages/IstatistiklerPage';
+import MusteriPanel from './components/MusteriPanel';
 
 const MENU = [
-  { key:'ozet',        label:'Genel Bakış',  icon:'ti-home-2',         roller:['admin','calisan'] },
-  { key:'siparisler',  label:'Siparişler',   icon:'ti-clipboard-list', roller:['admin','calisan'] },
-  { key:'urunler',     label:'Ürünler',      icon:'ti-shirt',          roller:['admin']           },
-  { key:'musteriler',  label:'Müşteriler',   icon:'ti-users',          roller:['admin']           },
-  { key:'gorevler',    label:'Görevler',     icon:'ti-checkbox',       roller:['admin','calisan'] },
-  { key:'kullanicilar',label:'Kullanıcılar', icon:'ti-user-cog',       roller:['admin']           },
-  { key:'ayarlar',     label:'Ayarlar',      icon:'ti-settings',       roller:['admin']           },
+  { key:'ozet',         label:'Genel Bakış',  icon:'ti-home-2',         roller:['admin','calisan'] },
+  { key:'siparisler',   label:'Siparişler',   icon:'ti-clipboard-list', roller:['admin','calisan'] },
+  { key:'istatistikler',label:'İstatistikler',icon:'ti-chart-bar',       roller:['admin']           },
+  { key:'urunler',      label:'Ürünler',      icon:'ti-shirt',          roller:['admin']           },
+  { key:'musteriler',   label:'Müşteriler',   icon:'ti-users',          roller:['admin']           },
+  { key:'gorevler',     label:'Görevler',     icon:'ti-checkbox',       roller:['admin','calisan'] },
+  { key:'kullanicilar', label:'Kullanıcılar', icon:'ti-user-cog',       roller:['admin']           },
+  { key:'ayarlar',      label:'Ayarlar',      icon:'ti-settings',       roller:['admin']           },
 ];
 
 function YonetimApp() {
   const { kullanici, cikisYap } = useAuth();
   const [aktif, setAktif] = useState('ozet');
   const gorulecek = MENU.filter(m => m.roller.includes(kullanici?.rol));
+
   return (
     <>
       <nav className="topnav">
@@ -42,20 +46,21 @@ function YonetimApp() {
               {kullanici?.rol==='admin'?'Yönetici':'Çalışan'}
             </span>
           </div>
-          <button className="btn-icon" onClick={cikisYap} title="Çıkış yap"><i className="ti ti-logout" style={{ fontSize:16 }}/></button>
+          <button className="btn-icon" onClick={cikisYap} title="Çıkış yap"><i className="ti ti-logout" style={{fontSize:16}}/></button>
         </div>
       </nav>
       <main className="main-content">
-        {aktif==='ozet'         && <OzetPage/>}
-        {aktif==='siparisler'   && <SiparislerPage/>}
-        {aktif==='urunler'      && <UrunlerPage/>}
-        {aktif==='musteriler'   && <MusterilerPage/>}
-        {aktif==='gorevler'     && <GorevlerPage/>}
-        {aktif==='kullanicilar' && <KullaniciYonetimiPage/>}
-        {aktif==='ayarlar'      && <AyarlarPage/>}
+        {aktif==='ozet'          && <OzetPage onSiparislerGit={()=>setAktif('siparisler')}/>}
+        {aktif==='siparisler'    && <SiparislerPage/>}
+        {aktif==='istatistikler' && <IstatistiklerPage/>}
+        {aktif==='urunler'       && <UrunlerPage/>}
+        {aktif==='musteriler'    && <MusterilerPage/>}
+        {aktif==='gorevler'      && <GorevlerPage/>}
+        {aktif==='kullanicilar'  && <KullaniciYonetimiPage/>}
+        {aktif==='ayarlar'       && <AyarlarPage/>}
       </main>
       <nav className="bottom-nav">
-        {gorulecek.map(m => (
+        {gorulecek.slice(0,5).map(m => (
           <button key={m.key} className={`bottom-nav-item ${aktif===m.key?'active':''}`} onClick={()=>setAktif(m.key)}>
             <i className={`ti ${m.icon}`}/>{m.label}
           </button>
@@ -72,14 +77,14 @@ function MusteriApp() {
       <nav className="topnav">
         <div className="topnav-logo">DTF <span>Yönetim</span></div>
         <div className="topnav-right">
-          <span style={{ fontSize:13, color:'var(--text2)', marginRight:8 }}>{kullanici?.firma_adi||kullanici?.ad||kullanici?.kullanici_adi}</span>
-          <button className="btn-icon" onClick={cikisYap}><i className="ti ti-logout" style={{ fontSize:16 }}/></button>
+          <span style={{ fontSize:13, color:'var(--text2)', marginRight:8 }}>
+            {kullanici?.firma_adi || kullanici?.ad || kullanici?.kullanici_adi}
+          </span>
+          <button className="btn-icon" onClick={cikisYap}><i className="ti ti-logout" style={{fontSize:16}}/></button>
         </div>
       </nav>
-      <main className="main-content" style={{ textAlign:'center', paddingTop:80 }}>
-        <i className="ti ti-package" style={{ fontSize:52, color:'var(--accent)', display:'block', marginBottom:16 }}/>
-        <div style={{ fontSize:22, fontWeight:800, marginBottom:8 }}>Hoş geldiniz{kullanici?.firma_adi?`, ${kullanici.firma_adi}`:''}</div>
-        <div style={{ color:'var(--text2)', fontSize:14 }}>Müşteri paneli yakında aktif olacak.</div>
+      <main className="main-content">
+        <MusteriPanel/>
       </main>
     </>
   );
@@ -87,9 +92,9 @@ function MusteriApp() {
 
 function AppIci() {
   const { kullanici, yukleniyor } = useAuth();
-  if (yukleniyor) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}><i className="ti ti-loader-2" style={{ fontSize:32 }}/></div>;
+  if (yukleniyor) return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text2)'}}><i className="ti ti-loader-2" style={{fontSize:32}}/></div>;
   if (!kullanici) return <LandingPage/>;
-  if (kullanici.rol === 'musteri') return <MusteriApp/>;
+  if (kullanici.rol==='musteri') return <MusteriApp/>;
   return <YonetimApp/>;
 }
 
