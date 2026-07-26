@@ -2,8 +2,9 @@ services:
   - type: web
     name: dtf-yonetim
     runtime: node
-    buildCommand: cd frontend && npm install && npm run build && cp -r dist ../backend/public/ && cd ../backend && npm install
-    startCommand: node backend/server.js
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
