@@ -6,18 +6,23 @@ const UserSchema = new mongoose.Schema({
   sifre:         { type: String, required: true },
   ad:            { type: String, default: '' },
   soyad:         { type: String, default: '' },
-  rol:           { type: String, enum: ['admin', 'calisan', 'musteri'], default: 'calisan' },
+  rol:           { type: String, enum: ['admin','calisan','musteri'], default: 'calisan' },
   aktif:         { type: Boolean, default: true },
+  // Müşteri ek bilgileri
+  firma_adi:     { type: String, default: '' },
+  telefon:       { type: String, default: '' },
+  email:         { type: String, default: '' },
+  adres:         { type: String, default: '' },
+  vergi_no:      { type: String, default: '' },
+  onay_bekliyor: { type: Boolean, default: false },
 }, { timestamps: true });
 
-// Şifreyi kaydetmeden önce hashle
 UserSchema.pre('save', async function(next) {
   if (!this.isModified('sifre')) return next();
   this.sifre = await bcrypt.hash(this.sifre, 10);
   next();
 });
 
-// Şifre kontrolü
 UserSchema.methods.sifreKontrol = function(sifre) {
   return bcrypt.compare(sifre, this.sifre);
 };
