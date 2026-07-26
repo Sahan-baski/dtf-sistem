@@ -76,3 +76,11 @@ export const authApiEk = {
   kullaniciGuncelle: (id, d) => api.patch(`/auth/kullanicilar/${id}`, d),
   kullaniciSil: (id) => api.delete(`/auth/kullanicilar/${id}`),
 };
+
+export const urunApi = {
+  getAll: (kategori) => api.get('/urunler', { params: kategori ? { kategori } : {} }),
+  create: (d) => api.post('/urunler', d),
+  update: (id, d) => api.put(`/urunler/${id}`, d),
+  toggle: (id) => api.patch(`/urunler/${id}/toggle`),
+  delete: (id) => api.delete(`/urunler/${id}`),
+};
