@@ -5,12 +5,8 @@ services:
     rootDir: backend
     buildCommand: npm install
     startCommand: npm start
-    disk:
-      name: dtf-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATA_DIR
-        value: /data
+      - key: MONGODB_URI
+        sync: false

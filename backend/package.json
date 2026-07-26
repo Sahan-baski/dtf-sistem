@@ -11,15 +11,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@libsql/client": "^0.17.3",
-    "axios": "^1.16.1",
+    "axios": "^1.18.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "lowdb": "^7.0.1",
-    "multer": "^2.1.1",
-    "node-cron": "^4.2.1",
-    "uuid": "^14.0.0"
+    "mongoose": "^9.7.4",
+    "multer": "^2.2.0",
+    "node-cron": "^4.6.0",
+    "uuid": "^14.0.1"
   },
   "engines": {
     "node": ">=18.0.0"

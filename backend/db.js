@@ -1,23 +1,13 @@
-const { LowSync } = require('lowdb');
-const { JSONFileSync } = require('lowdb/node');
-const { join } = require('path');
+const mongoose = require('mongoose');
 
-// Render'da /data kalıcı, local'de backend klasörü
-const dataDir = process.env.DATA_DIR || __dirname;
-const file = join(dataDir, 'data.json');
-
-const db = new LowSync(new JSONFileSync(file), {
-  siparisler: [],
-  gorevler: [],
-  musteriler: [],
-  dosyalar: [],
-  ayarlar: {
-    shopier_api_key: '',
-    shopier_api_secret: '',
-    varsayilan_teslim_gun: 3
+const baglan = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/dtf');
+    console.log('✅ MongoDB bağlantısı kuruldu');
+  } catch (err) {
+    console.error('❌ MongoDB bağlantı hatası:', err.message);
+    process.exit(1);
   }
-});
+};
 
-db.read();
-
-module.exports = db;
+module.exports = baglan;
