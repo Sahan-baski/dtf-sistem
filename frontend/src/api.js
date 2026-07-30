@@ -64,3 +64,8 @@ export const kategoriApi = {
   delete:(id)=>api.delete(`/kategoriler/${id}`),
 };
 export const istatistikApi = { get:()=>api.get('/istatistikler') };
+
+export const yedekApi = {
+  al: () => '/api/yedek/al',
+  yukle: (veri, mod) => api.post('/yedek/yukle', { veri, mod }),
+};

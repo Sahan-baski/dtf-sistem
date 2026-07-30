@@ -27,11 +27,18 @@ function YonetimApp() {
   const { kullanici, cikisYap } = useAuth();
   const [aktif, setAktif] = useState('ozet');
   const gorulecek = MENU.filter(m => m.roller.includes(kullanici?.rol));
+  const baslarf = (kullanici?.ad || kullanici?.kullanici_adi || 'A')[0].toUpperCase();
 
   return (
     <>
       <nav className="topnav">
-        <div className="topnav-logo">DTF <span>Yönetim</span></div>
+        {/* Logo */}
+        <div className="topnav-logo">
+          <div className="topnav-logo-badge">D</div>
+          <span className="topnav-logo-text">DTF <span>Yönetim</span></span>
+        </div>
+
+        {/* Nav links */}
         <div className="topnav-links">
           {gorulecek.map(m => (
             <button key={m.key} className={`nav-link ${aktif===m.key?'active':''}`} onClick={()=>setAktif(m.key)}>
@@ -39,16 +46,17 @@ function YonetimApp() {
             </button>
           ))}
         </div>
+
+        {/* Right side */}
         <div className="topnav-right">
-          <div style={{ fontSize:13, color:'var(--text2)', marginRight:8 }}>
-            <span style={{ color:'var(--text)', fontWeight:600 }}>{kullanici?.ad||kullanici?.kullanici_adi}</span>
-            <span style={{ marginLeft:6, fontSize:11, background:'rgba(79,126,248,0.15)', color:'var(--accent)', padding:'2px 8px', borderRadius:10, border:'1px solid rgba(79,126,248,0.3)' }}>
-              {kullanici?.rol==='admin'?'Yönetici':'Çalışan'}
-            </span>
+          <div style={{ fontSize:12, color:'var(--text2)', marginRight:4, textAlign:'right' }}>
+            <div style={{ fontWeight:600, color:'var(--text)', fontSize:13 }}>{kullanici?.ad||kullanici?.kullanici_adi}</div>
+            <div style={{ fontSize:11, color:'var(--indigo)' }}>{kullanici?.rol==='admin'?'Yönetici':'Çalışan'}</div>
           </div>
-          <button className="btn-icon" onClick={cikisYap} title="Çıkış yap"><i className="ti ti-logout" style={{fontSize:16}}/></button>
+          <div className="user-avatar" title="Çıkış yap" onClick={cikisYap}>{baslarf}</div>
         </div>
       </nav>
+
       <main className="main-content">
         {aktif==='ozet'          && <OzetPage onSiparislerGit={()=>setAktif('siparisler')}/>}
         {aktif==='siparisler'    && <SiparislerPage/>}
@@ -59,6 +67,7 @@ function YonetimApp() {
         {aktif==='kullanicilar'  && <KullaniciYonetimiPage/>}
         {aktif==='ayarlar'       && <AyarlarPage/>}
       </main>
+
       <nav className="bottom-nav">
         {gorulecek.slice(0,5).map(m => (
           <button key={m.key} className={`bottom-nav-item ${aktif===m.key?'active':''}`} onClick={()=>setAktif(m.key)}>
@@ -72,27 +81,34 @@ function YonetimApp() {
 
 function MusteriApp() {
   const { kullanici, cikisYap } = useAuth();
+  const baslarf = (kullanici?.ad || kullanici?.kullanici_adi || 'M')[0].toUpperCase();
   return (
     <>
       <nav className="topnav">
-        <div className="topnav-logo">DTF <span>Yönetim</span></div>
+        <div className="topnav-logo">
+          <div className="topnav-logo-badge">D</div>
+          <span className="topnav-logo-text">DTF <span>Yönetim</span></span>
+        </div>
         <div className="topnav-right">
-          <span style={{ fontSize:13, color:'var(--text2)', marginRight:8 }}>
-            {kullanici?.firma_adi || kullanici?.ad || kullanici?.kullanici_adi}
-          </span>
-          <button className="btn-icon" onClick={cikisYap}><i className="ti ti-logout" style={{fontSize:16}}/></button>
+          <div style={{ fontSize:12, color:'var(--text2)', marginRight:4, textAlign:'right' }}>
+            <div style={{ fontWeight:600, color:'var(--text)', fontSize:13 }}>{kullanici?.firma_adi||kullanici?.ad}</div>
+            <div style={{ fontSize:11, color:'var(--green)' }}>Müşteri</div>
+          </div>
+          <div className="user-avatar" onClick={cikisYap} title="Çıkış">{baslarf}</div>
         </div>
       </nav>
-      <main className="main-content">
-        <MusteriPanel/>
-      </main>
+      <main className="main-content"><MusteriPanel/></main>
     </>
   );
 }
 
 function AppIci() {
   const { kullanici, yukleniyor } = useAuth();
-  if (yukleniyor) return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text2)'}}><i className="ti ti-loader-2" style={{fontSize:32}}/></div>;
+  if (yukleniyor) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text2)'}}>
+      <i className="ti ti-loader-2" style={{fontSize:36,color:'var(--indigo)'}}/>
+    </div>
+  );
   if (!kullanici) return <LandingPage/>;
   if (kullanici.rol==='musteri') return <MusteriApp/>;
   return <YonetimApp/>;
