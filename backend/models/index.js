@@ -23,7 +23,7 @@ const SiparisSchema = new Schema({
 const GorevSchema = new Schema({
   baslik:{type:String,required:true}, aciklama:String,
   oncelik:{type:String,default:'normal',enum:['yuksek','normal','dusuk']},
-  tamamlandi:{type:Boolean,default:false}, tamamlanma_tarihi:String,
+  tamamlandi:{type:Boolean,default:false}, tamamlanma_tarihi:String, son_tarih:String,
 }, { timestamps:true });
 
 const MusteriSchema = new Schema({

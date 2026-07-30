@@ -65,7 +65,7 @@ function AdimKategori({ kategoriler, grup, secili, onSec, onGeri }) {
   return (
     <div>
       <div className="modal-title">{grup}</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
         {liste.map(k=>(
           <button key={k.key} type="button" onClick={()=>onSec(k)}
             style={{ background:secili?.key===k.key?`${k.renk}18`:'var(--bg3)', border:`1.5px solid ${secili?.key===k.key?k.renk:'var(--border)'}`, borderRadius:'var(--r-xs)', padding:'11px 16px', color:'var(--text)', cursor:'pointer', display:'flex', alignItems:'center', gap:10, fontSize:14, textAlign:'left', transition:'all 0.15s' }}>
