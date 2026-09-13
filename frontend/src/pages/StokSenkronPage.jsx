@@ -34,6 +34,12 @@ export default function StokSenkronPage() {
 
   const aktifHavuz = havuzlar.find(h => h._id === aktifHavuzId);
 
+  // Tablo değiştirilir değiştirilmez eski tabloyu hemen temizle - yoksa
+  // "Toplam (ortak havuz)" satırındaki kutucuklar (defaultValue ile
+  // kontrolsüz input olduğu için) yeni tablo verisi gelene kadar bir önceki
+  // tablonun değerlerini göstermeye devam ediyordu.
+  const handleTabloDegistir = (id) => { setAktifHavuzId(id); setTablo(null); };
+
   const handleHavuzSil = async () => {
     if (!aktifHavuz) return;
     if (!confirm(`"${aktifHavuz.etiket}" tablosunu (ve içindeki tüm stok verilerini) tamamen silmek istediğine emin misin? Bu işlem geri alınamaz.`)) return;
@@ -58,7 +64,7 @@ export default function StokSenkronPage() {
       {havuzlar.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
           <label className="form-label" style={{ margin: 0 }}>Tablo:</label>
-          <select className="form-input" style={{ width: 'auto', minWidth: 260 }} value={aktifHavuzId || ''} onChange={e => setAktifHavuzId(e.target.value)}>
+          <select className="form-input" style={{ width: 'auto', minWidth: 260 }} value={aktifHavuzId || ''} onChange={e => handleTabloDegistir(e.target.value)}>
             {havuzlar.map(h => <option key={h._id} value={h._id}>{h.etiket} ({h.bedenler.length} beden)</option>)}
           </select>
           <button className="btn btn-secondary" onClick={() => setDuzenleAcik(true)}><i className="ti ti-edit" />Düzenle</button>
@@ -71,6 +77,10 @@ export default function StokSenkronPage() {
           <i className="ti ti-table-off" style={{ fontSize: 36, display: 'block', marginBottom: 10 }} />
           Henüz bir tablo oluşturmadın. Yukarıdaki "Yeni Tablo Ekle" ile başla.
         </div>
+      )}
+
+      {aktifHavuzId && !tablo && yukleniyor && (
+        <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 40 }}>Tablo yükleniyor...</div>
       )}
 
       {aktifHavuzId && tablo && (
