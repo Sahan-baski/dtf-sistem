@@ -1,0 +1,12 @@
+# Yerel geliştirme için - bu dosya Git'e ASLA gönderilmez (.gitignore'da).
+# Render'daki CANLI site için bu değerleri ayrıca Render → Environment
+# sekmesinden de eklemen gerekiyor (bu dosya sadece bu bilgisayarda geçerli).
+
+MONGODB_URI=mongodb://localhost:27017/dtf
+JWT_SECRET=dtf-gizli-2024-xK9mP
+PORT=3001
+
+WC_SITE_URL=https://mirasgiyim.com
+WC_CONSUMER_KEY=ck_9eed9a6a1b0eadc0f1a096cc6a570754adb71d04
+WC_CONSUMER_SECRET=cs_f4b30b924b7165facfe183cc7d6c5bbc68ba08b7
+WC_WEBHOOK_SECRET=f3528bbbebd15a7044af394ae16971c40d56dea42d3c896a

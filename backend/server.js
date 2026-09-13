@@ -9,8 +9,14 @@ const User = require('./models/User');
 const app = express();
 const PORT = process.env.PORT || 3001;
 app.use(cors());
-app.use(express.json({limit:'50mb'}));
+// verify: WooCommerce webhook imzasını (HMAC) kontrol edebilmek için ham gövdeyi
+// de saklıyoruz - JSON.parse edilmiş req.body'den imza tekrar hesaplanamaz.
+app.use(express.json({limit:'50mb', verify:(req,_res,buf)=>{ req.rawBody = buf; }}));
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.join(__dirname,'./uploads')));
+
+// WooCommerce webhook'u - JWT gerektirmez (WooCommerce token'ımızı taşıyamaz),
+// onun yerine kendi HMAC imza kontrolünü yapar. Auth middleware'in dışında.
+app.use('/api/webhooks/woocommerce', require('./routes/webhookWoo'));
 
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/siparisler',    authMiddleware, require('./routes/siparisler'));
@@ -20,6 +26,7 @@ app.use('/api/musteriler',    authMiddleware, require('./routes/musteriler'));
 app.use('/api/dosyalar',      authMiddleware, require('./routes/dosyalar'));
 app.use('/api/ozet',          authMiddleware, require('./routes/ozet'));
 app.use('/api/urunler',       authMiddleware, require('./routes/urunler'));
+app.use('/api/stok-senkron',  authMiddleware, require('./routes/stokSenkron'));
 app.use('/api/ayarlar',       authMiddleware, require('./routes/ayarlar'));
 app.use('/api/kategoriler',   authMiddleware, require('./routes/kategoriler'));
 app.use('/api/istatistikler', authMiddleware, require('./routes/istatistikler'));

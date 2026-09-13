@@ -65,6 +65,24 @@ export const kategoriApi = {
 };
 export const istatistikApi = { get:()=>api.get('/istatistikler') };
 
+export const stokSenkronApi = {
+  havuzlar: () => api.get('/stok-senkron/havuzlar'),
+  havuzOlustur: (d) => api.post('/stok-senkron/havuzlar', d),
+  havuzGuncelle: (id,d) => api.put(`/stok-senkron/havuzlar/${id}`, d),
+  havuzSil: (id) => api.delete(`/stok-senkron/havuzlar/${id}`),
+  tablo: (id) => api.get(`/stok-senkron/havuzlar/${id}/tablo`),
+  bedenStokKaydet: (havuzId,beden,miktar) => api.post(`/stok-senkron/havuzlar/${havuzId}/beden-stok`, { beden, miktar }),
+  wcUrunAra: (ara) => api.get('/stok-senkron/wc-urunler', { params:{ ara } }),
+  urunEkle: (havuzId,wcUrunIdler) => api.post(`/stok-senkron/havuzlar/${havuzId}/urun-ekle`, { wc_urun_idler:wcUrunIdler }),
+  urunCikar: (havuzId,havuzUrunId) => api.delete(`/stok-senkron/havuzlar/${havuzId}/urunler/${havuzUrunId}`),
+  tasarimBagla: (havuzUrunId,masterTasarimId) => api.post(`/stok-senkron/urunler/${havuzUrunId}/tasarim-baglantisi`, { master_tasarim_id:masterTasarimId||null }),
+  testSatisi: (havuzUrunId,beden,adet) => api.post(`/stok-senkron/urunler/${havuzUrunId}/test-satisi`, { beden, adet }),
+  masterTasarimlar: () => api.get('/stok-senkron/master-tasarimlar'),
+  masterTasarimOlustur: (ad,stok,havuzId) => api.post('/stok-senkron/master-tasarimlar', { ad, stok, havuz_id:havuzId }),
+  masterTasarimGuncelle: (id,d,havuzId) => api.put(`/stok-senkron/master-tasarimlar/${id}`, { ...d, havuz_id:havuzId }),
+  masterTasarimSil: (id,havuzId) => api.delete(`/stok-senkron/master-tasarimlar/${id}`, { params:{ havuz_id:havuzId } }),
+};
+
 export const yedekApi = {
   al: () => '/api/yedek/al',
   yukle: (veri, mod) => api.post('/yedek/yukle', { veri, mod }),
