@@ -103,28 +103,56 @@ function SiparisListesi({ onSec, toast }) {
   );
 }
 
-const KARGO_FIRMALARI = ['Aras Kargo', 'Yurtiçi Kargo', 'MNG Kargo', 'Sürat Kargo', 'PTT Kargo', 'Trendyol Express', 'Hepsijet'];
+// Basit Kargo'dan canlı liste alınamazsa (token tanımlı değil vb.) kullanılacak yedek liste.
+const KARGO_FIRMALARI_YEDEK = ['Aras Kargo', 'Yurtiçi Kargo', 'MNG Kargo', 'Sürat Kargo', 'PTT Kargo', 'Trendyol Express', 'Hepsijet'];
 
 function SiparisDetay({ siparisId, onGeri, toast }) {
   const [siparis, setSiparis] = useState(null);
   const [yukleniyor, setYukleniyor] = useState(true);
-  const [firma, setFirma] = useState('');
+  const [kargoFirmalari, setKargoFirmalari] = useState(KARGO_FIRMALARI_YEDEK);
+
+  const [firmaKodu, setFirmaKodu] = useState('');
+  const [firmaAdi, setFirmaAdi] = useState('');
   const [kargoNo, setKargoNo] = useState('');
-  const [desi, setDesi] = useState('');
+  const [yukseklik, setYukseklik] = useState('');
+  const [genislik, setGenislik] = useState('');
+  const [derinlik, setDerinlik] = useState('');
   const [agirlik, setAgirlik] = useState('');
+
+  const [alici, setAlici] = useState({ ad_soyad: '', telefon: '', email: '', il: '', ilce: '', adres_satir: '' });
+
   const [gonderici, setGonderici] = useState({ ad: '', adres: '', telefon: '' });
   const [gondericiDuzenle, setGondericiDuzenle] = useState(false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
 
+  const [kodPaneliAcik, setKodPaneliAcik] = useState(false);
+  const [kodOlusturuluyor, setKodOlusturuluyor] = useState(false);
+
   useEffect(() => {
     setYukleniyor(true);
-    Promise.all([uretimTalimatiApi.siparis(siparisId), uretimTalimatiApi.gonderici()])
-      .then(([sr, gr]) => {
+    Promise.all([
+      uretimTalimatiApi.siparis(siparisId),
+      uretimTalimatiApi.gonderici(),
+      uretimTalimatiApi.kargoFirmalari().catch(() => ({ data: null })),
+    ])
+      .then(([sr, gr, fr]) => {
         setSiparis(sr.data);
         const e = sr.data.kargo_etiket;
-        if (e) { setFirma(e.firma || ''); setKargoNo(e.kargo_no || ''); setDesi(e.desi || ''); setAgirlik(e.agirlik || ''); }
+        if (e) {
+          setFirmaAdi(e.firma || ''); setFirmaKodu(e.firma_kodu || ''); setKargoNo(e.kargo_no || '');
+          setYukseklik(e.yukseklik || ''); setGenislik(e.genislik || ''); setDerinlik(e.derinlik || ''); setAgirlik(e.agirlik || '');
+        }
+        setAlici({
+          ad_soyad: sr.data.alici?.ad_soyad || '',
+          telefon: sr.data.alici?.telefon || '',
+          email: sr.data.alici?.email || '',
+          il: sr.data.alici?.il || '',
+          ilce: sr.data.alici?.ilce || '',
+          adres_satir: sr.data.alici?.adres_satir || sr.data.alici?.adres || '',
+        });
         setGonderici(gr.data?.ad ? gr.data : { ad: '', adres: '', telefon: '' });
         if (!gr.data?.ad) setGondericiDuzenle(true);
+        if (Array.isArray(fr.data) && fr.data.length) setKargoFirmalari(fr.data);
       })
       .catch(e => toast(e.response?.data?.hata || 'Sipariş alınamadı', 'error'))
       .finally(() => setYukleniyor(false));
@@ -133,7 +161,7 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
   const handleKargoKaydet = async () => {
     setKaydediliyor(true);
     try {
-      await uretimTalimatiApi.kargoEtiketKaydet(siparisId, { firma, kargo_no: kargoNo, desi, agirlik });
+      await uretimTalimatiApi.kargoEtiketKaydet(siparisId, { firma: firmaAdi, firma_kodu: firmaKodu, kargo_no: kargoNo, yukseklik, genislik, derinlik, agirlik });
       toast('Kargo bilgileri kaydedildi ✓');
     } catch (e) { toast(e.response?.data?.hata || 'Kaydedilemedi', 'error'); }
     finally { setKaydediliyor(false); }
@@ -144,8 +172,27 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
     catch (e) { toast(e.response?.data?.hata || 'Kaydedilemedi', 'error'); }
   };
 
+  const handleKodOlustur = async () => {
+    if (!firmaKodu) { toast('Önce kargo firması seç', 'error'); return; }
+    setKodOlusturuluyor(true);
+    try {
+      const r = await uretimTalimatiApi.kargoKoduOlustur(siparisId, {
+        handlerCode: firmaKodu,
+        paket: { yukseklik, genislik, derinlik, agirlik },
+        alici,
+      });
+      setFirmaAdi(r.data.firmaAdi || firmaAdi);
+      setKargoNo(r.data.kargoNo || '');
+      setKodPaneliAcik(false);
+      toast('Basit Kargo kodu oluşturuldu ✓');
+    } catch (e) { toast(e.response?.data?.hata || 'Kargo kodu oluşturulamadı', 'error'); }
+    finally { setKodOlusturuluyor(false); }
+  };
+
   if (yukleniyor) return <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 60 }}>Yükleniyor...</div>;
   if (!siparis) return null;
+
+  const desiHesap = ((Number(yukseklik) || 0) * (Number(genislik) || 0) * (Number(derinlik) || 0)) / 3000;
 
   return (
     <div>
@@ -154,33 +201,104 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
 
         <div className="card" style={{ padding: 16, marginBottom: 12 }}>
           <strong>🚚 Kargo Etiket Bilgileri</strong>
-          <p style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 12px' }}>Basit Kargo'da bu sipariş için oluşturduğun kargo no'yu buraya yapıştır — barkod otomatik oluşur.</p>
+          <p style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 12px' }}>Kargo firmasını seç, paket ölçülerini gir. Kodu elle yapıştırabilir ya da "Basit Kargo ile Kod Oluştur" ile gerçek bir gönderi oluşturabilirsin.</p>
           <div className="form-row" style={{ marginBottom: 12 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Kargo Firması</label>
-              <select className="form-input" value={firma} onChange={e => setFirma(e.target.value)}>
+              <select className="form-input" value={firmaKodu} onChange={e => {
+                const kod = e.target.value;
+                setFirmaKodu(kod);
+                const secilen = kargoFirmalari.find(f => (typeof f === 'string' ? f : f.kod) === kod);
+                setFirmaAdi(secilen ? (typeof secilen === 'string' ? secilen : secilen.ad) : kod);
+              }}>
                 <option value="">— seç —</option>
-                {KARGO_FIRMALARI.map(f => <option key={f} value={f}>{f}</option>)}
+                {kargoFirmalari.map(f => (
+                  typeof f === 'string'
+                    ? <option key={f} value={f}>{f}</option>
+                    : <option key={f.kod} value={f.kod}>{f.ad}</option>
+                ))}
               </select>
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Kargo No</label>
-              <input className="form-input" value={kargoNo} onChange={e => setKargoNo(e.target.value)} placeholder="Basit Kargo'dan gelen kod" />
+              <input className="form-input" value={kargoNo} onChange={e => setKargoNo(e.target.value)} placeholder="Kod / barkod" />
             </div>
           </div>
           <div className="form-row" style={{ marginBottom: 12 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Desi</label>
-              <input className="form-input" value={desi} onChange={e => setDesi(e.target.value)} placeholder="0.00" />
+              <label className="form-label">Yükseklik (cm)</label>
+              <input className="form-input" value={yukseklik} onChange={e => setYukseklik(e.target.value)} placeholder="0" />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Genişlik (cm)</label>
+              <input className="form-input" value={genislik} onChange={e => setGenislik(e.target.value)} placeholder="0" />
+            </div>
+          </div>
+          <div className="form-row" style={{ marginBottom: 12 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Derinlik (cm)</label>
+              <input className="form-input" value={derinlik} onChange={e => setDerinlik(e.target.value)} placeholder="0" />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Ağırlık (kg)</label>
               <input className="form-input" value={agirlik} onChange={e => setAgirlik(e.target.value)} placeholder="0.00" />
             </div>
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={handleKargoKaydet} disabled={kaydediliyor}>
-            <i className="ti ti-device-floppy" />{kaydediliyor ? 'Kaydediliyor...' : 'Kargo Bilgilerini Kaydet'}
-          </button>
+          {(yukseklik && genislik && derinlik) && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>Hesaplanan desi: <strong>{desiHesap.toFixed(2)}</strong></div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary btn-sm" onClick={handleKargoKaydet} disabled={kaydediliyor}>
+              <i className="ti ti-device-floppy" />{kaydediliyor ? 'Kaydediliyor...' : 'Bilgileri Kaydet'}
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={() => setKodPaneliAcik(v => !v)}>
+              <i className="ti ti-truck-delivery" />Basit Kargo ile Kod Oluştur
+            </button>
+          </div>
+
+          {kodPaneliAcik && (
+            <div style={{ marginTop: 14, padding: 12, border: '1.5px dashed var(--border2)', borderRadius: 8, background: 'var(--bg2)' }}>
+              <strong style={{ fontSize: 12.5 }}>Gönderi bilgilerini onayla</strong>
+              <p style={{ fontSize: 11.5, color: 'var(--red)', margin: '4px 0 10px', fontWeight: 600 }}>
+                Bu işlem gerçek bir kargo gönderisi oluşturur ve geri alınamaz. Onaylamadan önce alıcı bilgilerini kontrol et.
+              </p>
+              <div className="form-row" style={{ marginBottom: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Ad Soyad</label>
+                  <input className="form-input" value={alici.ad_soyad} onChange={e => setAlici(a => ({ ...a, ad_soyad: e.target.value }))} />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Telefon</label>
+                  <input className="form-input" value={alici.telefon} onChange={e => setAlici(a => ({ ...a, telefon: e.target.value }))} />
+                </div>
+              </div>
+              <div className="form-row" style={{ marginBottom: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">İl</label>
+                  <input className="form-input" value={alici.il} onChange={e => setAlici(a => ({ ...a, il: e.target.value }))} />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">İlçe</label>
+                  <input className="form-input" value={alici.ilce} onChange={e => setAlici(a => ({ ...a, ilce: e.target.value }))} />
+                </div>
+              </div>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label className="form-label">Adres</label>
+                <input className="form-input" value={alici.adres_satir} onChange={e => setAlici(a => ({ ...a, adres_satir: e.target.value }))} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label className="form-label">E-posta</label>
+                <input className="form-input" value={alici.email} onChange={e => setAlici(a => ({ ...a, email: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary btn-sm" onClick={handleKodOlustur} disabled={kodOlusturuluyor}>
+                  <i className="ti ti-check" />{kodOlusturuluyor ? 'Oluşturuluyor...' : 'Onayla ve Kod Oluştur'}
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setKodPaneliAcik(false)}>Vazgeç</button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ padding: 16, marginBottom: 12 }}>
@@ -203,7 +321,7 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
         <button className="btn btn-primary" onClick={() => window.print()}><i className="ti ti-printer" />Üretim Talimatını Yazdır</button>
       </div>
 
-      <YazdirmaAlani siparis={siparis} gonderici={gonderici} firma={firma} kargoNo={kargoNo} desi={desi} agirlik={agirlik} />
+      <YazdirmaAlani siparis={siparis} gonderici={gonderici} firma={firmaAdi} kargoNo={kargoNo} desi={(yukseklik && genislik && derinlik) ? desiHesap.toFixed(2) : ''} agirlik={agirlik} />
     </div>
   );
 }

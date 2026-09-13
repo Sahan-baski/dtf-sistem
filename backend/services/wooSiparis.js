@@ -62,12 +62,14 @@ async function siparisGetir(id) {
   const kutular = (s.line_items || []).map(k => ({
     kalem_id: k.id,
     ad: k.name,
+    kod: k.sku || '',
     beden: bedenBul(k),
     adet: k.quantity,
     gorsel: k.image?.src || null,
   }));
 
   const musteri = s.shipping && (s.shipping.address_1 || s.shipping.first_name) ? s.shipping : s.billing;
+  const sokakAdresi = [musteri?.address_1, musteri?.address_2].filter(Boolean).join(' ');
 
   return {
     id: s.id,
@@ -77,8 +79,16 @@ async function siparisGetir(id) {
     musteri_adi: adSoyad(s.billing) || adSoyad(s.shipping) || '—',
     alici: {
       ad_soyad: adSoyad(musteri),
+      // Yazdırma alanındaki etikette gösterilen tam, çok satırlı adres metni.
       adres: adresMetni(musteri),
+      // Basit Kargo API'sine gönderilecek ayrıştırılmış alanlar - kullanıcı
+      // "kod oluştur" onay panelinde göndermeden önce bunları düzeltebilir.
+      adres_satir: sokakAdresi,
+      il: musteri?.state || '',
+      ilce: musteri?.city || '',
+      posta_kodu: musteri?.postcode || '',
       telefon: s.billing?.phone || '',
+      email: s.billing?.email || '',
     },
     kutular,
   };

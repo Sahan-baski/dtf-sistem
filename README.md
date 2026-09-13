@@ -35,3 +35,16 @@ Kurulum (yukarıdaki 4 WooCommerce değişkenine ek olarak, sadece görsel yükl
 - Kategori mevcut WooCommerce kategorilerinden seçilir ya da yeni bir isim yazılıp anında WooCommerce'de yeni kategori olarak oluşturulur.
 - "Bedenli ürün" işaretlenirse, daha önce **Varyasyon Grupları** panelinden oluşturulmuş hazır bir beden listesi (ör. "Çocuk Grubu 1": 3-4,5-6,7-8,9-10,11-12,13-14,15-16 veya "Yetişkin Grubu": S,M,L,XL,XXL,XXXL) seçilip, ürüne özel olarak elle de değiştirilebilir. Ürün, bu bedenlerin her biri için bir varyasyon içeren "değişken" bir WooCommerce ürünü olarak oluşturulur.
 - Bu modül; Siparişler sayfası ve Müşteri Paneli'nin kullandığı eski yerel ürün/kategori listesinden (fason/toptan sipariş oluşturmak için kullanılan) tamamen ayrıdır, onlara dokunmaz.
+
+## Üretim Talimatı modülü
+
+Menüden **Üretim Talimatı** — WooCommerce siparişlerini listeler, bir sipariş açıldığında içindeki her ürün/beden için bir üretim kutucuğu (görsel + beden + adet) ve bir kargo etiketi içeren, A4 genişliğinde yazdırılabilir bir sayfa hazırlar.
+
+Kargo no elle de girilebilir; Basit Kargo entegrasyonu kurulursa panelden **gerçek bir kargo kodu/barkodu** oluşturulabilir (tek tıkla, onay panelinden alıcı bilgileri kontrol edildikten sonra):
+
+1. Basit Kargo hesabı → API/MCP token'ları bölümünden bir token oluştur.
+2. `backend/.env` (ve Render → Environment) içine ekle:
+   - `BASIT_KARGO_TOKEN` — 1. adımda oluşturduğun token
+3. Token girilmezse "Basit Kargo ile Kod Oluştur" ve kargo firması listesi çalışmaz; kargo no/firma/paket bilgileri yine elle girilip kaydedilebilir ve üretim talimatına yansır.
+
+⚠️ Bu token GERÇEK kargo gönderileri oluşturabilir. Koda veya Git'e asla gömülmemeli, sadece `.env` ve Render'ın Environment ayarlarında durmalı.
