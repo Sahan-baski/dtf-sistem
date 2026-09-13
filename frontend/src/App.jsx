@@ -10,6 +10,7 @@ import KullaniciYonetimiPage from './pages/KullaniciYonetimiPage';
 import UrunYonetimiPage from './pages/UrunYonetimiPage';
 import StokSenkronPage from './pages/StokSenkronPage';
 import FiyatGuncellePage from './pages/FiyatGuncellePage';
+import UretimTalimatiPage from './pages/UretimTalimatiPage';
 import AyarlarPage from './pages/AyarlarPage';
 import IstatistiklerPage from './pages/IstatistiklerPage';
 import MusteriPanel from './components/MusteriPanel';
@@ -21,6 +22,7 @@ const MENU = [
   { key:'urunler',      label:'Ürünler',      icon:'ti-shirt',          roller:['admin']           },
   { key:'stoksenkron',  label:'Stok Senkron', icon:'ti-replace',        roller:['admin']           },
   { key:'fiyatguncelle',label:'Fiyat Güncelle',icon:'ti-currency-lira', roller:['admin']           },
+  { key:'uretimtalimati',label:'Üretim Talimatı',icon:'ti-printer',     roller:['admin','calisan'] },
   { key:'musteriler',   label:'Müşteriler',   icon:'ti-users',          roller:['admin']           },
   { key:'gorevler',     label:'Görevler',     icon:'ti-checkbox',       roller:['admin','calisan'] },
   { key:'kullanicilar', label:'Kullanıcılar', icon:'ti-user-cog',       roller:['admin']           },
@@ -68,6 +70,7 @@ function YonetimApp() {
         {aktif==='urunler'       && <UrunYonetimiPage/>}
         {aktif==='stoksenkron'   && <StokSenkronPage/>}
         {aktif==='fiyatguncelle' && <FiyatGuncellePage/>}
+        {aktif==='uretimtalimati' && <UretimTalimatiPage/>}
         {aktif==='musteriler'    && <MusterilerPage/>}
         {aktif==='gorevler'      && <GorevlerPage/>}
         {aktif==='kullanicilar'  && <KullaniciYonetimiPage/>}

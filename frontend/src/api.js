@@ -101,6 +101,14 @@ export const urunYonetimiApi = {
   varyasyonGrubuSil: (id) => api.delete(`/urun-yonetimi/varyasyon-gruplari/${id}`),
 };
 
+export const uretimTalimatiApi = {
+  siparisler: (params) => api.get('/uretim-talimati/siparisler', { params }),
+  siparis: (id) => api.get(`/uretim-talimati/siparisler/${id}`),
+  kargoEtiketKaydet: (id,d) => api.put(`/uretim-talimati/siparisler/${id}/kargo-etiket`, d),
+  gonderici: () => api.get('/uretim-talimati/gonderici'),
+  gondericiKaydet: (d) => api.put('/uretim-talimati/gonderici', d),
+};
+
 export const yedekApi = {
   al: () => '/api/yedek/al',
   yukle: (veri, mod) => api.post('/yedek/yukle', { veri, mod }),
