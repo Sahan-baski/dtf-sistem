@@ -107,7 +107,7 @@ export default function AyarlarPage() {
             <div style={{ display:'flex', gap:8, marginBottom:12 }}>
               {[['ekle','Mevcut veriye ekle (güvenli)'],['sifirla','⚠️ Sıfırla ve yükle (tehlikeli)']].map(([k,l])=>(
                 <button key={k} type="button" onClick={()=>setGeriYuklemeMod(k)}
-                  style={{ flex:1, padding:'8px', border:`1.5px solid ${geriYuklemeMod===k?k==='sifirla'?'var(--red)':'var(--indigo)':'var(--border)'}`, background:geriYuklemeMod===k?k==='sifirla'?'rgba(239,68,68,0.1)':'rgba(99,102,241,0.1)':'var(--bg3)', borderRadius:'var(--r-xs)', color:geriYuklemeMod===k?k==='sifirla'?'var(--red)':'var(--indigo)':'var(--text2)', fontSize:12, cursor:'pointer' }}>
+                  style={{ flex:1, padding:'8px', border:`1.5px solid ${geriYuklemeMod===k?k==='sifirla'?'var(--red)':'var(--indigo)':'var(--border)'}`, background:geriYuklemeMod===k?k==='sifirla'?'rgba(239,68,68,0.1)':'rgba(22,163,74,0.1)':'var(--bg3)', borderRadius:'var(--r-xs)', color:geriYuklemeMod===k?k==='sifirla'?'var(--red)':'var(--indigo)':'var(--text2)', fontSize:12, cursor:'pointer' }}>
                   {l}
                 </button>
               ))}

@@ -83,6 +83,24 @@ export const stokSenkronApi = {
   masterTasarimSil: (id,havuzId) => api.delete(`/stok-senkron/master-tasarimlar/${id}`, { params:{ havuz_id:havuzId } }),
 };
 
+export const fiyatApi = {
+  urunler: (params) => api.get('/fiyat-guncelle/urunler', { params }),
+  kategoriler: () => api.get('/fiyat-guncelle/kategoriler'),
+  fiyatGuncelle: (id,tur,d) => api.put(`/fiyat-guncelle/urunler/${id}/fiyat`, { tur, ...d }),
+};
+
+export const urunYonetimiApi = {
+  kategoriler: () => api.get('/urun-yonetimi/kategoriler'),
+  kategoriOlustur: (ad) => api.post('/urun-yonetimi/kategoriler', { ad }),
+  urunler: (params) => api.get('/urun-yonetimi/urunler', { params }),
+  urunOlustur: (formData) => api.post('/urun-yonetimi/urunler', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  urunSil: (id) => api.delete(`/urun-yonetimi/urunler/${id}`),
+  varyasyonGruplari: () => api.get('/urun-yonetimi/varyasyon-gruplari'),
+  varyasyonGrubuOlustur: (ad,bedenler) => api.post('/urun-yonetimi/varyasyon-gruplari', { ad, bedenler }),
+  varyasyonGrubuGuncelle: (id,ad,bedenler) => api.put(`/urun-yonetimi/varyasyon-gruplari/${id}`, { ad, bedenler }),
+  varyasyonGrubuSil: (id) => api.delete(`/urun-yonetimi/varyasyon-gruplari/${id}`),
+};
+
 export const yedekApi = {
   al: () => '/api/yedek/al',
   yukle: (veri, mod) => api.post('/yedek/yukle', { veri, mod }),

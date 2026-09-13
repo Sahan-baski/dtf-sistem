@@ -27,6 +27,8 @@ app.use('/api/dosyalar',      authMiddleware, require('./routes/dosyalar'));
 app.use('/api/ozet',          authMiddleware, require('./routes/ozet'));
 app.use('/api/urunler',       authMiddleware, require('./routes/urunler'));
 app.use('/api/stok-senkron',  authMiddleware, require('./routes/stokSenkron'));
+app.use('/api/fiyat-guncelle',authMiddleware, require('./routes/fiyatGuncelle'));
+app.use('/api/urun-yonetimi',authMiddleware, require('./routes/urunYonetimi'));
 app.use('/api/ayarlar',       authMiddleware, require('./routes/ayarlar'));
 app.use('/api/kategoriler',   authMiddleware, require('./routes/kategoriler'));
 app.use('/api/istatistikler', authMiddleware, require('./routes/istatistikler'));

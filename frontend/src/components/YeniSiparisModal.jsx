@@ -86,7 +86,7 @@ function AdimKaynak({ secili, onSec, onGeri }) {
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
         {KAYNAKLAR.map(k=>(
           <button key={k.key} type="button" onClick={()=>onSec(k.key)}
-            style={{ background:secili===k.key?'rgba(99,102,241,0.15)':'var(--bg3)', border:`1.5px solid ${secili===k.key?'var(--indigo)':'var(--border)'}`, borderRadius:'var(--r-xs)', padding:'12px 14px', color:'var(--text)', cursor:'pointer', display:'flex', alignItems:'center', gap:10, fontSize:14, fontWeight:500 }}>
+            style={{ background:secili===k.key?'rgba(22,163,74,0.14)':'var(--bg3)', border:`1.5px solid ${secili===k.key?'var(--indigo)':'var(--border)'}`, borderRadius:'var(--r-xs)', padding:'12px 14px', color:'var(--text)', cursor:'pointer', display:'flex', alignItems:'center', gap:10, fontSize:14, fontWeight:500 }}>
             <i className={`ti ${k.icon}`} style={{ fontSize:20, color:'var(--indigo)' }}/>{k.label}
           </button>
         ))}
@@ -188,7 +188,7 @@ function AdimDetay({ kategori, kaynak, isMusteri, onGeri, onKaydet }) {
             <div style={{ position:'relative' }}>
               <input className="form-input" value={musteriArama} onChange={e=>{ setMusteriArama(e.target.value); setMusteriMenuAcik(true); }} onFocus={()=>setMusteriMenuAcik(true)} placeholder="Ad, soyad veya telefon ile ara..."/>
               {musteriMenuAcik && filtrelenmisMusteri.length>0 && (
-                <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:100, background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'var(--r-xs)', boxShadow:'0 8px 24px rgba(0,0,0,0.4)', maxHeight:220, overflowY:'auto', marginTop:4 }}>
+                <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:100, background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'var(--r-xs)', boxShadow:'0 8px 24px rgba(13,40,25,0.16)', maxHeight:220, overflowY:'auto', marginTop:4 }}>
                   {filtrelenmisMusteri.map(m=>(
                     <button key={m._id} type="button" onClick={()=>musteriSec(m)}
                       style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:10, color:'var(--text)' }}
@@ -245,7 +245,7 @@ function AdimDetay({ kategori, kaynak, isMusteri, onGeri, onKaydet }) {
         <div style={{ display:'flex', gap:8 }}>
           {[{key:'',label:'Seçilmedi'},{key:'tek_yon',label:'Tek Yön'},{key:'cift_yon',label:'Çift Yön'}].map(b=>(
             <button key={b.key} type="button" onClick={()=>setBaskiYonu(b.key)}
-              style={{ flex:1, padding:'8px', border:`1.5px solid ${baskiYonu===b.key?'var(--indigo)':'var(--border)'}`, background:baskiYonu===b.key?'rgba(99,102,241,0.15)':'var(--bg3)', borderRadius:'var(--r-xs)', color:baskiYonu===b.key?'var(--indigo)':'var(--text2)', fontSize:13, cursor:'pointer' }}>
+              style={{ flex:1, padding:'8px', border:`1.5px solid ${baskiYonu===b.key?'var(--indigo)':'var(--border)'}`, background:baskiYonu===b.key?'rgba(22,163,74,0.14)':'var(--bg3)', borderRadius:'var(--r-xs)', color:baskiYonu===b.key?'var(--indigo)':'var(--text2)', fontSize:13, cursor:'pointer' }}>
               {b.label}
             </button>
           ))}

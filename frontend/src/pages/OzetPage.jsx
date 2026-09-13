@@ -167,7 +167,7 @@ export default function OzetPage({ onSiparislerGit }) {
           </div>
           <div style={{ display:'flex', gap:4 }}>
             {PERIYOT.map(p=>(
-              <button key={p.key} onClick={()=>setPeriyot(p.key)} style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${periyot===p.key?'var(--indigo)':'var(--border)'}`, background:periyot===p.key?'rgba(99,102,241,0.15)':'var(--bg3)', color:periyot===p.key?'var(--indigo)':'var(--text2)', fontSize:12, cursor:'pointer' }}>
+              <button key={p.key} onClick={()=>setPeriyot(p.key)} style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${periyot===p.key?'var(--indigo)':'var(--border)'}`, background:periyot===p.key?'rgba(22,163,74,0.14)':'var(--bg3)', color:periyot===p.key?'var(--indigo)':'var(--text2)', fontSize:12, cursor:'pointer' }}>
                 {p.label}
               </button>
             ))}
@@ -175,16 +175,16 @@ export default function OzetPage({ onSiparislerGit }) {
         </div>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={chartData} margin={{ top:0,right:0,left:0,bottom:0 }} barGap={2}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false}/>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(13,40,25,0.08)" vertical={false}/>
             <XAxis dataKey="label" tick={{ fill:'var(--text3)', fontSize:11 }} axisLine={false} tickLine={false}/>
             <YAxis tick={{ fill:'var(--text3)', fontSize:11 }} axisLine={false} tickLine={false} tickFormatter={v=>`${(v/1000).toFixed(0)}k`}/>
             <Tooltip content={<CustomTooltip/>}/>
-            <Bar dataKey="ciro"   name="Toplam"  fill="rgba(99,102,241,0.6)"  radius={[4,4,0,0]}/>
+            <Bar dataKey="ciro"   name="Toplam"  fill="rgba(22,163,74,0.65)"  radius={[4,4,0,0]}/>
             <Bar dataKey="tahsil" name="Tahsil"  fill="rgba(16,185,129,0.7)"  radius={[4,4,0,0]}/>
           </BarChart>
         </ResponsiveContainer>
         <div style={{ display:'flex', gap:16, marginTop:8, justifyContent:'center' }}>
-          <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color:'var(--text2)' }}><span style={{ width:10,height:10,borderRadius:2,background:'rgba(99,102,241,0.6)',display:'inline-block' }}/>Toplam Ciro</span>
+          <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color:'var(--text2)' }}><span style={{ width:10,height:10,borderRadius:2,background:'rgba(22,163,74,0.65)',display:'inline-block' }}/>Toplam Ciro</span>
           <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color:'var(--text2)' }}><span style={{ width:10,height:10,borderRadius:2,background:'rgba(16,185,129,0.7)',display:'inline-block' }}/>Tahsil Edilen</span>
         </div>
       </div>

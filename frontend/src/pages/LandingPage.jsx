@@ -85,7 +85,7 @@ export default function LandingPage() {
 
         {/* GİRİŞ FORMLARI */}
         {(ekran==='admin_giris'||ekran==='calisan_giris'||ekran==='musteri_giris') && (
-          <div style={{ background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'var(--r)', padding:28, boxShadow:'0 24px 60px rgba(0,0,0,0.5)' }}>
+          <div style={{ background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'var(--r)', padding:28, boxShadow:'0 24px 60px rgba(13,40,25,0.12)' }}>
             <form onSubmit={e=>handleGiris(e, ekran==='musteri_giris'?'musteri':'yonetim')}>
               <div className="form-group">
                 <label className="form-label">Kullanıcı Adı</label>
@@ -114,7 +114,7 @@ export default function LandingPage() {
 
         {/* KAYIT FORMU */}
         {ekran==='kayit' && (
-          <div style={{ background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'var(--r)', padding:28, boxShadow:'0 24px 60px rgba(0,0,0,0.5)', textAlign:'left' }}>
+          <div style={{ background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'var(--r)', padding:28, boxShadow:'0 24px 60px rgba(13,40,25,0.12)', textAlign:'left' }}>
             <form onSubmit={handleKayit}>
               <div style={{ fontSize:11, fontWeight:700, color:'var(--indigo)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12 }}>Kişisel Bilgiler</div>
               <div className="form-row">
@@ -161,7 +161,7 @@ function PanelKutu({ icon, label, alt, gradient, glow, onClick }) {
   return (
     <button type="button" onClick={onClick}
       onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
-      style={{ background:'var(--bg2)', border:`1.5px solid ${hover?'rgba(99,102,241,0.4)':'var(--border2)'}`, borderRadius:'var(--r)', padding:'28px 20px', cursor:'pointer', transition:'all 0.2s', transform:hover?'translateY(-4px)':'none', boxShadow:hover?glow:'none', display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
+      style={{ background:'var(--bg2)', border:`1.5px solid ${hover?'rgba(22,163,74,0.4)':'var(--border2)'}`, borderRadius:'var(--r)', padding:'28px 20px', cursor:'pointer', transition:'all 0.2s', transform:hover?'translateY(-4px)':'none', boxShadow:hover?glow:'none', display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
       <div style={{ width:56, height:56, borderRadius:16, background:gradient, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:hover?glow:'none' }}>
         <i className={`ti ${icon}`} style={{ fontSize:26, color:'white' }}/>
       </div>

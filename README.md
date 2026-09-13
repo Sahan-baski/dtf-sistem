@@ -15,3 +15,23 @@ Kurulum:
    - Gizli Anahtar: `.env`'deki `WC_WEBHOOK_SECRET` ile birebir aynı değer
    - Durum: Aktif
 3. `guncelle.bat` ile derleyip GitHub'a gönder, Render otomatik deploy eder.
+
+## Fiyat Güncelle modülü
+
+Aynı WooCommerce bağlantısını (yukarıdaki 4 ortam değişkeni) kullanır, ayrı bir kurulum gerekmez. Menüden **Fiyat Güncelle** — mağazadaki tüm ürünler (arama/kategori filtreli) tek bir tabloda listelenir, her ürün için tek bir satış fiyatı ve isteğe bağlı bir indirimli fiyat girilir (beden bazlı ayrım yoktur). Değişken (bedenli) bir ürünün fiyatı kaydedildiğinde, aynı fiyat o ürünün TÜM varyasyonlarına tek seferde (toplu istekle) yazılır.
+
+## Ürünler modülü (WooCommerce ürün yönetimi)
+
+Menüden **Ürünler** — mağazadaki (mirasgiyim.com) ürünleri doğrudan buradan listeler, yeni ürün ekler, siler. Panelden eklenen bir ürün **anında sitede yayınlanır**, WooCommerce paneline tekrar girmeye gerek kalmaz.
+
+Kurulum (yukarıdaki 4 WooCommerce değişkenine ek olarak, sadece görsel yükleme için):
+
+1. WordPress'te (mirasgiyim.com/wp-admin) → **Kullanıcılar → Profilim** → sayfanın altında **Uygulama Şifreleri** bölümü → bir isim yaz (ör. "DTF Sistem") → **Yeni Uygulama Şifresi Ekle**. Oluşan şifreyi kopyala (boşluklarıyla birlikte, sadece bir kez gösterilir).
+2. `backend/.env` (ve Render → Environment) içine ekle:
+   - `WP_KULLANICI_ADI` — WordPress'e giriş yaptığın kullanıcı adı
+   - `WP_UYGULAMA_SIFRESI` — 1. adımda oluşturduğun şifre
+
+Ürün eklerken:
+- Kategori mevcut WooCommerce kategorilerinden seçilir ya da yeni bir isim yazılıp anında WooCommerce'de yeni kategori olarak oluşturulur.
+- "Bedenli ürün" işaretlenirse, daha önce **Varyasyon Grupları** panelinden oluşturulmuş hazır bir beden listesi (ör. "Çocuk Grubu 1": 3-4,5-6,7-8,9-10,11-12,13-14,15-16 veya "Yetişkin Grubu": S,M,L,XL,XXL,XXXL) seçilip, ürüne özel olarak elle de değiştirilebilir. Ürün, bu bedenlerin her biri için bir varyasyon içeren "değişken" bir WooCommerce ürünü olarak oluşturulur.
+- Bu modül; Siparişler sayfası ve Müşteri Paneli'nin kullandığı eski yerel ürün/kategori listesinden (fason/toptan sipariş oluşturmak için kullanılan) tamamen ayrıdır, onlara dokunmaz.

@@ -19,7 +19,7 @@ function urgency(kalanGun) {
   if (kalanGun===null) return { bg:'var(--bg2)', border:'var(--border)', chip:'', chipRenk:'' };
   if (kalanGun<=0)  return { bg:'rgba(239,68,68,0.07)',  border:'#ef4444', chip:kalanGun===0?'BUGÜN':'GECİKTİ', chipRenk:'#ef4444' };
   if (kalanGun===1) return { bg:'rgba(245,158,11,0.07)', border:'#f59e0b', chip:'YARIN',    chipRenk:'#f59e0b' };
-  if (kalanGun<=7)  return { bg:'rgba(99,102,241,0.04)', border:'#6366f1', chip:'BU HAFTA', chipRenk:'#6366f1' };
+  if (kalanGun<=7)  return { bg:'rgba(22,163,74,0.05)', border:'#16a34a', chip:'BU HAFTA', chipRenk:'#16a34a' };
   return { bg:'var(--bg2)', border:'var(--border)', chip:'', chipRenk:'' };
 }
 
@@ -45,7 +45,7 @@ function PortalPanel({ btnRef, label, onKapat, children }) {
   }, []);
 
   return createPortal(
-    <div ref={panelRef} style={{ position:'absolute', top:pos.top, left:pos.left, width:pos.width, zIndex:9999, background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'var(--r-sm)', padding:18, boxShadow:'0 20px 60px rgba(0,0,0,0.7)' }}>
+    <div ref={panelRef} style={{ position:'absolute', top:pos.top, left:pos.left, width:pos.width, zIndex:9999, background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'var(--r-sm)', padding:18, boxShadow:'0 20px 60px rgba(13,40,25,0.18)' }}>
       <div style={{ fontSize:13, fontWeight:700, marginBottom:14, color:'var(--text)' }}>{label}</div>
       {children}
     </div>,
@@ -105,7 +105,7 @@ function SiparisKarti({ s, onYukle, onSil, onDurumDegis, onAsamaDegis, gunlukKap
             {urg.chip && <span style={{ fontSize:9, fontWeight:800, color:urg.chipRenk, background:`${urg.chipRenk}18`, padding:'2px 6px', borderRadius:3, border:`1px solid ${urg.chipRenk}40`, letterSpacing:'0.06em' }}>{urg.chip}</span>}
             <span style={{ fontWeight:700, fontSize:14 }}>{s.musteri_adi} {s.musteri_soyadi}</span>
             <span style={{ fontSize:11, color:'var(--text3)' }}>#{s.siparis_no}</span>
-            {kapBadge && <span style={{ fontSize:10, color:'var(--indigo)', background:'rgba(99,102,241,0.12)', padding:'1px 6px', borderRadius:10 }}>{gunlukKapasite[s.teslim_tarihi]||0}/{gunlukKapasite.kapasite||180} press</span>}
+            {kapBadge && <span style={{ fontSize:10, color:'var(--indigo)', background:'rgba(22,163,74,0.12)', padding:'1px 6px', borderRadius:10 }}>{gunlukKapasite[s.teslim_tarihi]||0}/{gunlukKapasite.kapasite||180} press</span>}
           </div>
           <div style={{ fontSize:12, color:'var(--text2)', marginBottom:3, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
             {s.kaynak && <span>{s.kaynak}</span>}
