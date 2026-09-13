@@ -107,6 +107,7 @@ export const uretimTalimatiApi = {
   kargoEtiketKaydet: (id,d) => api.put(`/uretim-talimati/siparisler/${id}/kargo-etiket`, d),
   kargoFirmalari: () => api.get('/uretim-talimati/kargo-firmalari'),
   kargoKoduOlustur: (id,d) => api.post(`/uretim-talimati/siparisler/${id}/kargo-kodu-olustur`, d),
+  kargoEtiketSvg: (id) => api.get(`/uretim-talimati/siparisler/${id}/kargo-etiket-svg`),
   gonderici: () => api.get('/uretim-talimati/gonderici'),
   gondericiKaydet: (d) => api.put('/uretim-talimati/gonderici', d),
 };

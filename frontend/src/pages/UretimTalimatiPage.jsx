@@ -128,6 +128,14 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
   const [kodPaneliAcik, setKodPaneliAcik] = useState(false);
   const [kodOlusturuluyor, setKodOlusturuluyor] = useState(false);
 
+  const [etiketSvg, setEtiketSvg] = useState(null);
+
+  const etiketSvgYukle = useCallback(async (basitKargoId) => {
+    if (!basitKargoId) { setEtiketSvg(null); return; }
+    try { const r = await uretimTalimatiApi.kargoEtiketSvg(siparisId); setEtiketSvg(r.data.svg); }
+    catch { setEtiketSvg(null); /* etiket henüz yok/alınamadı - kendi kartımıza düşer */ }
+  }, [siparisId]);
+
   useEffect(() => {
     setYukleniyor(true);
     Promise.all([
@@ -141,6 +149,7 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
         if (e) {
           setFirmaAdi(e.firma || ''); setFirmaKodu(e.firma_kodu || ''); setKargoNo(e.kargo_no || '');
           setYukseklik(e.yukseklik || ''); setGenislik(e.genislik || ''); setDerinlik(e.derinlik || ''); setAgirlik(e.agirlik || '');
+          if (e.basit_kargo_id) etiketSvgYukle(e.basit_kargo_id);
         }
         setAlici({
           ad_soyad: sr.data.alici?.ad_soyad || '',
@@ -172,8 +181,11 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
     catch (e) { toast(e.response?.data?.hata || 'Kaydedilemedi', 'error'); }
   };
 
+  const paketGecerli = Number(yukseklik) > 0 && Number(genislik) > 0 && Number(derinlik) > 0 && Number(agirlik) > 0;
+
   const handleKodOlustur = async () => {
     if (!firmaKodu) { toast('Önce kargo firması seç', 'error'); return; }
+    if (!paketGecerli) { toast('Kod oluşturmadan önce yükseklik/genişlik/derinlik/ağırlık alanlarını doldur (sıfırdan büyük olmalı)', 'error'); return; }
     setKodOlusturuluyor(true);
     try {
       const r = await uretimTalimatiApi.kargoKoduOlustur(siparisId, {
@@ -185,6 +197,7 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
       setKargoNo(r.data.kargoNo || '');
       setKodPaneliAcik(false);
       toast('Basit Kargo kodu oluşturuldu ✓');
+      if (r.data.basitKargoId) etiketSvgYukle(r.data.basitKargoId);
     } catch (e) { toast(e.response?.data?.hata || 'Kargo kodu oluşturulamadı', 'error'); }
     finally { setKodOlusturuluyor(false); }
   };
@@ -263,6 +276,11 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
               <p style={{ fontSize: 11.5, color: 'var(--red)', margin: '4px 0 10px', fontWeight: 600 }}>
                 Bu işlem gerçek bir kargo gönderisi oluşturur ve geri alınamaz. Onaylamadan önce alıcı bilgilerini kontrol et.
               </p>
+              {!paketGecerli && (
+                <p style={{ fontSize: 11.5, color: 'var(--amber)', margin: '0 0 10px', fontWeight: 600 }}>
+                  ⚠ Yukarıdaki yükseklik/genişlik/derinlik/ağırlık alanlarını doldurmadan kod oluşturulamaz.
+                </p>
+              )}
               <div className="form-row" style={{ marginBottom: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Ad Soyad</label>
@@ -292,7 +310,7 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
                 <input className="form-input" value={alici.email} onChange={e => setAlici(a => ({ ...a, email: e.target.value }))} />
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary btn-sm" onClick={handleKodOlustur} disabled={kodOlusturuluyor}>
+                <button className="btn btn-primary btn-sm" onClick={handleKodOlustur} disabled={kodOlusturuluyor || !paketGecerli}>
                   <i className="ti ti-check" />{kodOlusturuluyor ? 'Oluşturuluyor...' : 'Onayla ve Kod Oluştur'}
                 </button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setKodPaneliAcik(false)}>Vazgeç</button>
@@ -321,20 +339,23 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
         <button className="btn btn-primary" onClick={() => window.print()}><i className="ti ti-printer" />Üretim Talimatını Yazdır</button>
       </div>
 
-      <YazdirmaAlani siparis={siparis} gonderici={gonderici} firma={firmaAdi} kargoNo={kargoNo} desi={(yukseklik && genislik && derinlik) ? desiHesap.toFixed(2) : ''} agirlik={agirlik} />
+      <YazdirmaAlani siparis={siparis} gonderici={gonderici} firma={firmaAdi} kargoNo={kargoNo} desi={(yukseklik && genislik && derinlik) ? desiHesap.toFixed(2) : ''} agirlik={agirlik} etiketSvg={etiketSvg} />
     </div>
   );
 }
 
-function YazdirmaAlani({ siparis, gonderici, firma, kargoNo, desi, agirlik }) {
+function YazdirmaAlani({ siparis, gonderici, firma, kargoNo, desi, agirlik, etiketSvg }) {
   const barcodeRef = useRef(null);
 
+  // Basit Kargo'nun hazır etiketi (etiketSvg) varsa kendi barkodumuzu çizmeye
+  // gerek yok - onu olduğu gibi gömüyoruz. Sadece elle girilmiş bir kargo
+  // no'su olup Basit Kargo etiketi yoksa kendi basit barkodumuzu çiziyoruz.
   useEffect(() => {
-    if (barcodeRef.current && kargoNo) {
+    if (!etiketSvg && barcodeRef.current && kargoNo) {
       try { JsBarcode(barcodeRef.current, kargoNo, { format: 'CODE128', displayValue: true, fontSize: 13, height: 42, margin: 4 }); }
       catch { /* geçersiz karakter vb. - sessizce yut */ }
     }
-  }, [kargoNo]);
+  }, [kargoNo, etiketSvg]);
 
   return (
     <div className="yazdir-alani">
@@ -363,6 +384,8 @@ function YazdirmaAlani({ siparis, gonderici, firma, kargoNo, desi, agirlik }) {
         .ut-kutu-etiket { display: flex; justify-content: space-between; font-size: 9px; color: #666; margin: 3px 2px 1px; }
         .ut-kutu-bar { background: #16a34a; color: #fff; font-size: 10px; font-weight: 700; border-radius: 2px; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center; }
         .ut-kargo-firma { font-size: 13px; font-weight: 700; border: 1.5px solid #111; border-radius: 4px; padding: 4px 12px; }
+        .ut-etiket-bk { border: none; padding: 0; }
+        .ut-etiket-bk svg { width: 100%; height: auto; display: block; }
       `}</style>
 
       <div className="ut-baslik">
@@ -374,24 +397,28 @@ function YazdirmaAlani({ siparis, gonderici, firma, kargoNo, desi, agirlik }) {
       </div>
 
       <div className="ut-govde">
-        <div className="ut-etiket">
-          <div className="ut-etiket-baslik">
-            <b>Şahan</b>
-            <span style={{ fontSize: 9, color: '#666' }}>GÖNDERİCİ:<br /><b style={{ fontSize: 11 }}>{gonderici.ad || '—'}</b></span>
+        {etiketSvg ? (
+          <div className="ut-etiket ut-etiket-bk" dangerouslySetInnerHTML={{ __html: etiketSvg }} />
+        ) : (
+          <div className="ut-etiket">
+            <div className="ut-etiket-baslik">
+              <b>Şahan</b>
+              <span style={{ fontSize: 9, color: '#666' }}>GÖNDERİCİ:<br /><b style={{ fontSize: 11 }}>{gonderici.ad || '—'}</b></span>
+            </div>
+            <div className="ut-etiket-blok">
+              <b>ALICI</b>
+              <div><b>{siparis.alici?.ad_soyad}</b></div>
+              <div>{siparis.alici?.adres}</div>
+            </div>
+            <div className="ut-etiket-blok">
+              <b>KARGO BİLGİLERİ</b>
+              <div>Kargo No: {kargoNo || '—'}</div>
+              <div>Desi: {desi || '0.00'} &nbsp;|&nbsp; Ağırlık: {agirlik || '0.00'} kg</div>
+            </div>
+            <div className="ut-etiket-not">KARGO PERSONELİNE NOT:<br />Sipariş No #{siparis.numara} ile birlikte teslim edilmelidir.</div>
+            {kargoNo && <svg ref={barcodeRef} style={{ width: '100%', marginTop: 6 }} />}
           </div>
-          <div className="ut-etiket-blok">
-            <b>ALICI</b>
-            <div><b>{siparis.alici?.ad_soyad}</b></div>
-            <div>{siparis.alici?.adres}</div>
-          </div>
-          <div className="ut-etiket-blok">
-            <b>KARGO BİLGİLERİ</b>
-            <div>Kargo No: {kargoNo || '—'}</div>
-            <div>Desi: {desi || '0.00'} &nbsp;|&nbsp; Ağırlık: {agirlik || '0.00'} kg</div>
-          </div>
-          <div className="ut-etiket-not">KARGO PERSONELİNE NOT:<br />Sipariş No #{siparis.numara} ile birlikte teslim edilmelidir.</div>
-          {kargoNo && <svg ref={barcodeRef} style={{ width: '100%', marginTop: 6 }} />}
-        </div>
+        )}
 
         {siparis.kutular.map(k => (
           <div className="ut-kutu" key={k.kalem_id}>

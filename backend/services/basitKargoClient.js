@@ -30,7 +30,17 @@ function hataMetni(e) {
   const mesaj = e.response?.data?.message || e.response?.data?.error;
   if (mesaj) return `Basit Kargo: ${mesaj}`;
   if (e.code === 'ECONNABORTED') return 'Basit Kargo isteği zaman aşımına uğradı.';
-  if (e.response) return `Basit Kargo HTTP ${e.response.status} hatası.`;
+  if (e.response) {
+    // Basit Kargo hata gövdesinde açıklayıcı bir "message"/"error" alanı
+    // yoksa (ör. 500'de düz metin/HTML dönebiliyor), sebebi teşhis etmeye
+    // yardımcı olsun diye gövdenin başını kısaca ekle.
+    let govde = '';
+    try {
+      const ham = typeof e.response.data === 'string' ? e.response.data : JSON.stringify(e.response.data || '');
+      govde = ham ? ham.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+    } catch { /* yok say */ }
+    return `Basit Kargo HTTP ${e.response.status} hatası.${govde ? ' ' + govde : ''}`;
+  }
   return e.message || 'Bilinmeyen Basit Kargo hatası.';
 }
 
@@ -81,4 +91,14 @@ async function siparisVeKoduOlustur({ handlerCode, siparisNo, urunler, paket, al
   };
 }
 
-module.exports = { firmalariListele, siparisVeKoduOlustur, hataMetni };
+/**
+ * Basit Kargo'nun panelindeki "Kargo Barkodu" ile aynı, hazır tasarlanmış
+ * gönderici/alıcı/barkod etiketini SVG olarak getirir - kendi barkod
+ * görselimizi çizmek yerine doğrudan bunu yazdırma alanına gömüyoruz.
+ */
+async function etiketSvgGetir(basitKargoId) {
+  const { data } = await client().get(`/label/svg/${basitKargoId}`, { responseType: 'arraybuffer' });
+  return Buffer.from(data).toString('utf8');
+}
+
+module.exports = { firmalariListele, siparisVeKoduOlustur, etiketSvgGetir, hataMetni };

@@ -78,6 +78,12 @@ router.post('/siparisler/:id/kargo-kodu-olustur', async (req, res) => {
     const { handlerCode, paket, alici } = req.body;
     if (!handlerCode) return res.status(400).json({ hata: 'Kargo firması seçilmedi.' });
 
+    const yukseklik = Number(paket?.yukseklik), genislik = Number(paket?.genislik);
+    const derinlik = Number(paket?.derinlik), agirlik = Number(paket?.agirlik);
+    if (!(yukseklik > 0 && genislik > 0 && derinlik > 0 && agirlik > 0)) {
+      return res.status(400).json({ hata: 'Paket yükseklik, genişlik, derinlik ve ağırlık değerleri sıfırdan büyük olmalı - Basit Kargo boş/sıfır ölçülerde hata veriyor.' });
+    }
+
     const siparis = await woo.siparisGetir(req.params.id);
     const sonuc = await basitKargo.siparisVeKoduOlustur({
       handlerCode,
@@ -104,6 +110,20 @@ router.post('/siparisler/:id/kargo-kodu-olustur', async (req, res) => {
   } catch (e) {
     console.error('[UretimTalimati] Basit Kargo kod oluşturma hatası:', e.message);
     res.status(400).json({ hata: (basitKargo.hataMetni ? basitKargo.hataMetni(e) : null) || e.message || 'Kargo kodu oluşturulamadı.' });
+  }
+});
+
+// Basit Kargo'nun kendi hazır barkod etiketini (SVG) getirir - kod
+// oluşturulduktan sonra yazdırma alanında doğrudan bu gömülür.
+router.get('/siparisler/:id/kargo-etiket-svg', async (req, res) => {
+  try {
+    const etiket = await KargoEtiket.findOne({ wc_siparis_id: req.params.id });
+    if (!etiket?.basit_kargo_id) return res.status(404).json({ hata: 'Bu sipariş için Basit Kargo etiketi henüz oluşturulmamış.' });
+    const svg = await basitKargo.etiketSvgGetir(etiket.basit_kargo_id);
+    res.json({ svg });
+  } catch (e) {
+    console.error('[UretimTalimati] Etiket SVG hatası:', e.message);
+    res.status(400).json({ hata: (basitKargo.hataMetni ? basitKargo.hataMetni(e) : null) || e.message || 'Etiket alınamadı.' });
   }
 });
 
