@@ -82,12 +82,48 @@ async function urunSil(urunId, kalici = false) {
   await client().delete(`/products/${urunId}`, { params: { force: !!kalici } });
 }
 
+/**
+ * Bir beden tablosu görselini (WP medya id + url) tek bir ürüne uygular:
+ * isteğe göre açıklamanın sonuna görsel olarak ekler ve/veya ürünün
+ * mevcut fotoğraflarını koruyarak galerisine ek fotoğraf olarak ekler.
+ * Aynı görsel zaten eklenmişse (URL açıklamada geçiyor / medya ID galeride
+ * varsa) tekrar eklenmez - aynı ürüne birden fazla kez uygulamak güvenlidir.
+ */
+async function bedenTablosuUygula(urunId, { mediaId, url }, { aciklamayaEkle = true, galeriyeEkle = true } = {}) {
+  const { data: urun } = await client().get(`/products/${urunId}`);
+  const govde = {};
+
+  if (aciklamayaEkle) {
+    const mevcutAciklama = urun.description || '';
+    if (!mevcutAciklama.includes(url)) {
+      const etiket = `<img src="${url}" alt="Beden Tablosu" style="max-width:100%;height:auto;" />`;
+      govde.description = mevcutAciklama ? `${mevcutAciklama}\n${etiket}` : etiket;
+    }
+  }
+
+  if (galeriyeEkle) {
+    const mevcutGorseller = urun.images || [];
+    const zatenVar = mevcutGorseller.some(g => g.id === mediaId);
+    if (!zatenVar) {
+      govde.images = [
+        ...mevcutGorseller.map(g => (g.id ? { id: g.id } : { src: g.src })),
+        { id: mediaId },
+      ];
+    }
+  }
+
+  if (!Object.keys(govde).length) return { degisti: false };
+  await client().put(`/products/${urunId}`, govde);
+  return { degisti: true };
+}
+
 module.exports = {
   kategorileriListele,
   kategoriOlustur,
   urunleriListele,
   urunOlustur,
   urunSil,
+  bedenTablosuUygula,
   resimYukle,
   hataMetni,
   wpHataMetni: wp.hataMetni,

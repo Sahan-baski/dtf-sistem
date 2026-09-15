@@ -99,6 +99,10 @@ export const urunYonetimiApi = {
   varyasyonGrubuOlustur: (ad,bedenler) => api.post('/urun-yonetimi/varyasyon-gruplari', { ad, bedenler }),
   varyasyonGrubuGuncelle: (id,ad,bedenler) => api.put(`/urun-yonetimi/varyasyon-gruplari/${id}`, { ad, bedenler }),
   varyasyonGrubuSil: (id) => api.delete(`/urun-yonetimi/varyasyon-gruplari/${id}`),
+  bedenTablolari: () => api.get('/urun-yonetimi/beden-tablolari'),
+  bedenTablosuYukle: (formData) => api.post('/urun-yonetimi/beden-tablolari', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  bedenTablosuSil: (id) => api.delete(`/urun-yonetimi/beden-tablolari/${id}`),
+  bedenTablosuUygula: (d) => api.post('/urun-yonetimi/urunler/beden-tablosu-uygula', d),
 };
 
 export const uretimTalimatiApi = {

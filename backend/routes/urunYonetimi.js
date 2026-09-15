@@ -10,6 +10,7 @@ const router = express.Router();
 const multer = require('multer');
 const woo = require('../services/wooUrun');
 const VaryasyonGrubu = require('../models/varyasyonGrubu');
+const BedenTablosu = require('../models/bedenTablosu');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
@@ -79,6 +80,56 @@ router.post('/urunler', upload.single('resim'), async (req, res) => {
 router.delete('/urunler/:id', async (req, res) => {
   try { await woo.urunSil(req.params.id, req.query.kalici === '1'); res.json({ mesaj: 'Silindi' }); }
   catch (e) { hataYaniti(res, e, 'Ürün silinemedi.'); }
+});
+
+// ----- Beden Tabloları (tekrar kullanılabilir, birden çok ürüne uygulanabilir görseller) -----
+
+router.get('/beden-tablolari', async (req, res) => {
+  try { res.json(await BedenTablosu.find().sort({ createdAt: -1 })); }
+  catch (e) { hataYaniti(res, e); }
+});
+
+router.post('/beden-tablolari', upload.single('resim'), async (req, res) => {
+  try {
+    const ad = (req.body.ad || '').trim();
+    if (!ad) return res.status(400).json({ hata: 'Beden tablosu adı gerekli.' });
+    if (!req.file) return res.status(400).json({ hata: 'Görsel gerekli.' });
+
+    let yuklenen;
+    try { yuklenen = await woo.resimYukle(req.file.buffer, req.file.originalname, req.file.mimetype); }
+    catch (e) { return res.status(400).json({ hata: `Görsel yüklenemedi: ${woo.wpHataMetni ? woo.wpHataMetni(e) : e.message}` }); }
+
+    const kayit = await BedenTablosu.create({ ad, wp_media_id: yuklenen.id, url: yuklenen.url });
+    res.status(201).json(kayit);
+  } catch (e) { hataYaniti(res, e, 'Beden tablosu kaydedilemedi.'); }
+});
+
+router.delete('/beden-tablolari/:id', async (req, res) => {
+  try { await BedenTablosu.findByIdAndDelete(req.params.id); res.json({ mesaj: 'Silindi' }); }
+  catch (e) { hataYaniti(res, e); }
+});
+
+// Seçilen ürünlere (10-15 tanesine birden) bir beden tablosu görselini toplu uygular.
+router.post('/urunler/beden-tablosu-uygula', async (req, res) => {
+  try {
+    const { urun_idler, beden_tablosu_id, aciklamaya_ekle, galeriye_ekle } = req.body;
+    const idler = Array.isArray(urun_idler) ? urun_idler.map(Number).filter(Boolean) : [];
+    if (!idler.length) return res.status(400).json({ hata: 'En az bir ürün seçmelisin.' });
+    if (aciklamaya_ekle === false && galeriye_ekle === false) return res.status(400).json({ hata: 'Açıklama veya galeriden en az biri seçili olmalı.' });
+
+    const tablo = await BedenTablosu.findById(beden_tablosu_id);
+    if (!tablo) return res.status(404).json({ hata: 'Beden tablosu bulunamadı.' });
+
+    const secenekler = { aciklamayaEkle: aciklamaya_ekle !== false, galeriyeEkle: galeriye_ekle !== false };
+
+    let basarili = 0;
+    const hatalar = [];
+    for (const id of idler) {
+      try { await woo.bedenTablosuUygula(id, { mediaId: tablo.wp_media_id, url: tablo.url }, secenekler); basarili++; }
+      catch (e) { hatalar.push({ id, hata: woo.hataMetni ? woo.hataMetni(e) : e.message }); }
+    }
+    res.json({ basarili, toplam: idler.length, hatalar });
+  } catch (e) { hataYaniti(res, e, 'Beden tablosu uygulanamadı.'); }
 });
 
 // ----- Varyasyon Grupları (hazır beden listeleri) -----
