@@ -185,7 +185,7 @@ function HavuzGorunumu({ havuzId, tablo, yukleniyor, onTabloDegisti, toast }) {
     <div>
       {mesaj && <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--indigo)' }}>{mesaj}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 16, marginBottom: 18, alignItems: 'start' }}>
         <UrunEklePaneli havuzId={havuzId} onEklendi={onTabloDegisti} toast={toast} />
         <TasarimStoklariPaneli havuzId={havuzId} masterTasarimlar={tablo.master_tasarimlar} onDegisti={onTabloDegisti} goster={goster} />
       </div>
@@ -359,6 +359,22 @@ function UrunEklePaneli({ havuzId, onEklendi, toast }) {
 
   const toggle = (id) => setSeciliIdler(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
 
+  // Şu an ekranda görünen arama sonuçlarının HEPSİ seçili mi? (başka bir
+  // aramadan kalma seçimler bu hesaba dahil değil, sadece görünenler sayılır)
+  const hepsiSecili = sonuclar.length > 0 && sonuclar.every(p => seciliIdler.includes(p.id));
+
+  // "Tümünü Seç" - görünen sonuçların ID'lerini seçili listeye ekler (zaten
+  // seçili olanları tekrar eklemez - bir ürün zaten tabloya eklenmişse tekrar
+  // eklemek zaten bir şey değiştirmiyor, o yüzden burada da güvenle tekrar
+  // seçilebilir). Hepsi zaten seçiliyse tekrar tıklamak sadece görünenleri kaldırır.
+  const tumunuSecToggle = () => {
+    setSeciliIdler(s => {
+      if (hepsiSecili) return s.filter(id => !sonuclar.some(p => p.id === id));
+      const yeniler = sonuclar.map(p => p.id).filter(id => !s.includes(id));
+      return [...s, ...yeniler];
+    });
+  };
+
   const handleEkle = async () => {
     if (!seciliIdler.length) { toast('Önce en az bir ürün seç', 'error'); return; }
     setEkleniyor(true);
@@ -378,6 +394,12 @@ function UrunEklePaneli({ havuzId, onEklendi, toast }) {
       <strong>🔍 Tabloya Ürün Ekle</strong>
       <p style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 10px' }}>WooCommerce'deki varyasyonlu (bedenli) ürünler arasında ara, birden fazla seçip tek seferde ekle.</p>
       <input className="form-input" value={arama} onChange={e => setArama(e.target.value)} placeholder="Ürün adı yaz..." style={{ marginBottom: 8 }} />
+      {sonuclar.length > 0 && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px', fontSize: 12, fontWeight: 600, color: 'var(--text3)', cursor: 'pointer', borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
+          <input type="checkbox" checked={hepsiSecili} onChange={tumunuSecToggle} />
+          Tümünü seç ({sonuclar.length})
+        </label>
+      )}
       <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 10 }}>
         {ariyor && <div style={{ fontSize: 12, color: 'var(--text3)' }}>Aranıyor...</div>}
         {!ariyor && arama.trim() && sonuclar.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)' }}>Eklenebilecek ürün bulunamadı.</div>}
@@ -430,15 +452,27 @@ function TasarimStoklariPaneli({ havuzId, masterTasarimlar, onDegisti, goster })
   };
 
   return (
-    <div className="card" style={{ padding: 16 }}>
+    <div
+      className="card"
+      style={{
+        padding: 16,
+        resize: 'both',
+        overflow: 'auto',
+        minWidth: 340,
+        minHeight: 280,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+      title="Sağ alt köşeden tutup sürükleyerek bu paneli büyütüp küçültebilirsin"
+    >
       <strong>✏️ Tasarım Stokları (DTF kağıtların)</strong>
-      <p style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 10px' }}>Elindeki her DTF kağıdı/baskı tasarımı için bir satır aç, adını sen belirle, elindeki sayfa/adet sayısını gir. WooCommerce ürünleriyle ilgisi yok — aşağıdaki tablodaki her ürünü "Bağlı Tasarım" sütunundan buradaki bir tasarıma bağlarsın.</p>
+      <p style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 10px' }}>Elindeki her DTF kağıdı/baskı tasarımı için bir satır aç, adını sen belirle, elindeki sayfa/adet sayısını gir. WooCommerce ürünleriyle ilgisi yok — aşağıdaki tablodaki her ürünü "Bağlı Tasarım" sütunundan buradaki bir tasarıma bağlarsın. (Bu paneli sağ alt köşesinden tutup büyütebilirsin.)</p>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         <input className="form-input" value={ad} onChange={e => setAd(e.target.value)} placeholder="Tasarım adı (ör. Fatih Sultan Mehmet)" style={{ flex: 1 }} />
         <input className="form-input" type="number" min="0" value={stok} onChange={e => setStok(e.target.value)} placeholder="Adet" style={{ width: 70 }} />
         <button className="btn btn-primary" onClick={handleEkle} disabled={ekleniyor}>+ Ekle</button>
       </div>
-      <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+      <div style={{ flex: 1, minHeight: 80, overflowY: 'auto' }}>
         {(!masterTasarimlar || masterTasarimlar.length === 0) && <div style={{ fontSize: 12, color: 'var(--text3)' }}>Henüz bir tasarım eklemedin.</div>}
         {masterTasarimlar?.map(m => (
           <div key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
