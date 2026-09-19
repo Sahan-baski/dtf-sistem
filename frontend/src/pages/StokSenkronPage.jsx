@@ -156,6 +156,7 @@ function HavuzFormModal({ havuz, onKapat, onKaydet, toast }) {
 
 function HavuzGorunumu({ havuzId, tablo, yukleniyor, onTabloDegisti, toast }) {
   const [mesaj, setMesaj] = useState('');
+  const [testSatisUrunu, setTestSatisUrunu] = useState(null);
 
   const yenile = useCallback(async () => {
     try { const r = await stokSenkronApi.tablo(havuzId); onTabloDegisti(r.data); }
@@ -230,6 +231,7 @@ function HavuzGorunumu({ havuzId, tablo, yukleniyor, onTabloDegisti, toast }) {
                     ? <a href={u.duzenleme_linki} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>{u.ad}</a>
                     : u.ad}
                   <br />
+                  <button className="btn-icon" style={{ fontSize: 11, color: 'var(--indigo)', padding: '2px 6px 2px 0' }} onClick={() => setTestSatisUrunu(u)} title="Gerçek bir sipariş gelmiş gibi stoktan düşürür - stok senkronun doğru çalıştığını denemek için">🧪 Test Satışı</button>
                   <button className="btn-icon" style={{ fontSize: 11, color: 'var(--red)', padding: '2px 0' }} onClick={() => handleUrunCikar(u.id)}>Tablodan kaldır</button>
                 </Td>
                 {u.hucreler.map(h => (
@@ -251,6 +253,69 @@ function HavuzGorunumu({ havuzId, tablo, yukleniyor, onTabloDegisti, toast }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {testSatisUrunu && (
+        <TestSatisiModal
+          urun={testSatisUrunu}
+          bedenler={tablo.bedenler}
+          onKapat={() => setTestSatisUrunu(null)}
+          onUygulandi={(yeniTablo) => { onTabloDegisti(yeniTablo); setTestSatisUrunu(null); goster('Test satışı uygulandı - tablodaki ve WooCommerce\'teki sayıları kontrol et'); }}
+          toast={toast}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Test Satışı" - gerçek bir WooCommerce siparişi geldiğinde çalışacak AYNI
+ * fonksiyonu (satisUygula) tetikler. Yani bu bir önizleme/simülasyon DEĞİL -
+ * seçtiğin bedenin havuz stoğunu ve bağlıysa tasarım stoğunu GERÇEKTEN düşürür
+ * ve WooCommerce'teki gerçek varyasyon stoğunu günceller. Stok senkronun
+ * (hem beden hem tasarım tarafında) doğru düştüğünü canlı sipariş beklemeden
+ * kontrol etmek için var.
+ */
+function TestSatisiModal({ urun, bedenler, onKapat, onUygulandi, toast }) {
+  const [beden, setBeden] = useState(bedenler[0] || '');
+  const [adet, setAdet] = useState(1);
+  const [uygulaniyor, setUygulaniyor] = useState(false);
+
+  const handleUygula = async () => {
+    if (!beden) { toast('Bir beden seç', 'error'); return; }
+    if (!adet || adet < 1) { toast('Adet en az 1 olmalı', 'error'); return; }
+    if (!confirm(`"${urun.ad}" ürününün ${beden} bedeninden ${adet} adet GERÇEKTEN satılmış gibi stoktan düşürülecek (hem beden hem varsa bağlı tasarım stoğu, WooCommerce dahil). Emin misin?`)) return;
+    setUygulaniyor(true);
+    try {
+      const r = await stokSenkronApi.testSatisi(urun.id, beden, adet);
+      onUygulandi(r.data.tablo);
+    } catch (e) { toast(e.response?.data?.hata || 'Test satışı uygulanamadı', 'error'); }
+    finally { setUygulaniyor(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onKapat()}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <div className="modal-title">🧪 Test Satışı - {urun.ad}</div>
+        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: -4, marginBottom: 14 }}>
+          Bu, gerçek bir sipariş gelmiş gibi davranır ve stoğu GERÇEKTEN düşürür (WooCommerce dahil) - önizleme değildir. Sadece stok senkronun doğru çalıştığını denemek için kullan; geri alma yok, yanlışlıkla düşürürsen sayıyı elle geri yazman gerekir.
+        </p>
+        <div className="form-group">
+          <label className="form-label">Beden</label>
+          <select className="form-input" value={beden} onChange={e => setBeden(e.target.value)}>
+            {bedenler.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Adet</label>
+          <input className="form-input" type="number" min="1" value={adet} onChange={e => setAdet(parseInt(e.target.value) || 1)} />
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onKapat}>İptal</button>
+          <button type="button" className="btn btn-primary" onClick={handleUygula} disabled={uygulaniyor}>
+            <i className="ti ti-check" />{uygulaniyor ? 'Uygulanıyor...' : 'Satışı Uygula'}
+          </button>
+        </div>
       </div>
     </div>
   );
