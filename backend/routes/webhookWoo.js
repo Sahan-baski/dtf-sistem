@@ -55,8 +55,18 @@ router.post('/siparis', async (req, res) => {
       return res.json({ atlandi: true, sebep: `Durum "${siparis.status}" sayılmıyor` });
     }
 
-    const zatenIslendi = await IslenmisSiparis.findOne({ wc_siparis_id: siparis.id });
-    if (zatenIslendi) {
+    // NOT: önce "işlendi mi?" diye OKUYUP sonra kaydı YAZMAK yerine, ikisini
+    // tek adımda (atomik) yapıyoruz. Eskisi, WooCommerce aynı sipariş için
+    // webhook'u neredeyse aynı anda iki kez gönderirse (bu olabiliyor), her
+    // ikisinin de "henüz işlenmemiş" görüp siparişi İKİ KEZ stoktan
+    // düşürmesine yol açabiliyordu. wc_siparis_id üzerindeki tekil (unique)
+    // indeks sayesinde bu "iddia et" adımı veritabanı seviyesinde güvenli.
+    const oncekiKayit = await IslenmisSiparis.findOneAndUpdate(
+      { wc_siparis_id: siparis.id },
+      { $setOnInsert: { wc_siparis_id: siparis.id, islenme_tarihi: new Date() } },
+      { upsert: true, new: false }
+    );
+    if (oncekiKayit) {
       return res.json({ atlandi: true, sebep: 'Bu sipariş zaten işlenmiş' });
     }
 
@@ -69,7 +79,6 @@ router.post('/siparis', async (req, res) => {
       dusulenSatir++;
     }
 
-    await IslenmisSiparis.create({ wc_siparis_id: siparis.id });
     res.json({ islendi: true, dusulenSatir });
   } catch (e) {
     console.error('[StokSenkron/Webhook] Sipariş işlenemedi:', e.message);

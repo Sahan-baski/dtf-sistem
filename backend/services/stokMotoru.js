@@ -83,11 +83,48 @@ async function havuzHamStoguAyarla(havuzId, beden, miktar) {
   return yeni;
 }
 
+/**
+ * Havuz stoğunu ATOMİK olarak (veritabanı seviyesinde $inc ile) düşürür.
+ * ÖNEMLİ: havuzHamStoguAyarla gibi "önce oku, sonra yaz" YAPMAZ - çünkü iki
+ * satış (ör. aynı anda "processing"e geçen 2 farklı sipariş) neredeyse aynı
+ * anda işlenirse, ikisi de aynı eski değeri okuyup üzerine yazabilir ve bir
+ * satış stoktan hiç düşmemiş gibi kaybolur (kayıp güncelleme / race condition).
+ * $inc bu riski ortadan kaldırır çünkü MongoDB artırma/azaltmayı kendi
+ * içinde, ara okuma olmadan, tek adımda yapar.
+ */
+async function havuzStoguAtomikDusur(havuzId, beden, adet) {
+  const guncel = await HavuzBedenStok.findOneAndUpdate(
+    { havuz_id: havuzId, beden },
+    { $inc: { miktar: -adet } },
+    { upsert: true, new: true }
+  );
+  if (guncel.miktar < 0) {
+    await HavuzBedenStok.updateOne({ _id: guncel._id }, { miktar: 0 });
+    guncel.miktar = 0;
+  }
+  return guncel.miktar;
+}
+
 async function urunTasarimStoguAyarla(havuzUrunId, miktar) {
   miktar = Math.max(0, parseInt(miktar, 10) || 0);
   await HavuzUrun.findByIdAndUpdate(havuzUrunId, { tasarim_stogu: miktar });
   await urununTumBedenleriniYenidenHesapla(havuzUrunId);
   return miktar;
+}
+
+/** Ürünün kendi (master'a bağlı olmayan) tasarım stoğunu ATOMİK olarak düşürür - bkz. havuzStoguAtomikDusur açıklaması. */
+async function urunTasarimStoguAtomikDusur(havuzUrunId, adet) {
+  const guncel = await HavuzUrun.findOneAndUpdate(
+    { _id: havuzUrunId },
+    { $inc: { tasarim_stogu: -adet } },
+    { new: true }
+  );
+  if (!guncel) return null;
+  if (guncel.tasarim_stogu < 0) {
+    await HavuzUrun.updateOne({ _id: havuzUrunId }, { tasarim_stogu: 0 });
+    guncel.tasarim_stogu = 0;
+  }
+  return guncel.tasarim_stogu;
 }
 
 async function masterTasarimStoguAyarla(masterId, miktar) {
@@ -96,6 +133,27 @@ async function masterTasarimStoguAyarla(masterId, miktar) {
   const bagliUrunler = await HavuzUrun.find({ master_tasarim_id: masterId });
   for (const u of bagliUrunler) await urununTumBedenleriniYenidenHesapla(u._id);
   return miktar;
+}
+
+/**
+ * Master tasarım (DTF kağıt) stoğunu ATOMİK olarak düşürür. Bu, birden fazla
+ * ürünün AYNI tasarıma bağlı olduğu durumda kritik: örneğin aynı tasarımı
+ * kullanan 3 farklı ürün/renk neredeyse aynı anda satılırsa (ör. toplu
+ * "işleme alındı" durumuna geçirilirse), eski "önce oku sonra yaz" yöntemi
+ * bu 3 satıştan sadece 1 tanesini sayabiliyordu. $inc ile üçü de doğru sayılır.
+ */
+async function masterTasarimAtomikDusur(masterId, adet) {
+  const guncel = await MasterTasarim.findOneAndUpdate(
+    { _id: masterId },
+    { $inc: { stok: -adet } },
+    { new: true }
+  );
+  if (!guncel) return null;
+  if (guncel.stok < 0) {
+    await MasterTasarim.updateOne({ _id: masterId }, { stok: 0 });
+    guncel.stok = 0;
+  }
+  return guncel.stok;
 }
 
 async function masterTasarimOlustur(ad, stok) {
@@ -252,14 +310,20 @@ async function satisUygula(havuzUrunId, beden, adet) {
   const havuzUrun = await HavuzUrun.findById(havuzUrunId);
   if (!havuzUrun) return;
 
-  const mevcutHavuzStok = await havuzStok(havuzUrun.havuz_id, beden);
-  await havuzHamStoguAyarla(havuzUrun.havuz_id, beden, Math.max(0, mevcutHavuzStok - adet));
+  // ÖNEMLİ: burada artık "önce mevcut sayıyı oku, sonra adet kadar eksiğini yaz"
+  // YÖNTEMİ KULLANILMIYOR - iki satış (webhook) aynı anda/çok yakın zamanda
+  // gelirse eskisi bir satışı kaybedebiliyordu (aşağıdaki açıklamaya bkz).
+  // Bunun yerine veritabanına doğrudan "şu kadar azalt" komutu gönderiliyor.
+  await havuzStoguAtomikDusur(havuzUrun.havuz_id, beden, adet);
+  await havuzBedeniYenidenHesapla(havuzUrun.havuz_id, beden);
 
   if (havuzUrun.master_tasarim_id) {
-    const master = await MasterTasarim.findById(havuzUrun.master_tasarim_id);
-    await masterTasarimStoguAyarla(havuzUrun.master_tasarim_id, Math.max(0, (master ? master.stok : 0) - adet));
+    await masterTasarimAtomikDusur(havuzUrun.master_tasarim_id, adet);
+    const bagliUrunler = await HavuzUrun.find({ master_tasarim_id: havuzUrun.master_tasarim_id });
+    for (const u of bagliUrunler) await urununTumBedenleriniYenidenHesapla(u._id);
   } else {
-    await urunTasarimStoguAyarla(havuzUrunId, Math.max(0, havuzUrun.tasarim_stogu - adet));
+    await urunTasarimStoguAtomikDusur(havuzUrunId, adet);
+    await urununTumBedenleriniYenidenHesapla(havuzUrunId);
   }
 }
 
