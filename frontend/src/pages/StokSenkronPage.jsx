@@ -21,12 +21,30 @@ export default function StokSenkronPage() {
     } catch { toast('Tablolar yüklenemedi', 'error'); }
   }, [aktifHavuzId]);
 
+  // "Uygulama gibi" (sayfa yenilemeden) çalıştığı için, tablo hızlı hızlı
+  // değiştirildiğinde ESKİ tablonun sunucu cevabı bazen YENİ tabloyu
+  // seçtikten SONRA geri gelebiliyor (ağ isteklerinin sırası garanti değil).
+  // Bunu kontrol etmeden yazarsak, eski/başka bir tablonun verisi o anki
+  // ekranın üzerine biniyor - "yarım yamalak/bug'lı görünüm" tam olarak
+  // buydu. aktifHavuzIdRef her zaman GÜNCEL seçimi tutar; bir cevap
+  // geldiğinde hâlâ o tablodaysak uyguluyoruz, değilsek (kullanıcı o
+  // arada başka bir tabloya geçmişse) o eski cevabı sessizce yok sayıyoruz.
+  const aktifHavuzIdRef = useRef(aktifHavuzId);
+  useEffect(() => { aktifHavuzIdRef.current = aktifHavuzId; }, [aktifHavuzId]);
+
   const tabloyuYukle = useCallback(async () => {
     if (!aktifHavuzId) { setTablo(null); return; }
+    const bunuIstedigimizHavuzId = aktifHavuzId;
     setYukleniyor(true);
-    try { const r = await stokSenkronApi.tablo(aktifHavuzId); setTablo(r.data); }
-    catch { toast('Tablo yüklenemedi', 'error'); }
-    finally { setYukleniyor(false); }
+    try {
+      const r = await stokSenkronApi.tablo(aktifHavuzId);
+      if (aktifHavuzIdRef.current !== bunuIstedigimizHavuzId) return; // artık başka bir tablodayız - bu eski cevabı yok say
+      setTablo(r.data);
+    } catch {
+      if (aktifHavuzIdRef.current === bunuIstedigimizHavuzId) toast('Tablo yüklenemedi', 'error');
+    } finally {
+      if (aktifHavuzIdRef.current === bunuIstedigimizHavuzId) setYukleniyor(false);
+    }
   }, [aktifHavuzId]);
 
   useEffect(() => { havuzlariYukle(); }, []);
@@ -344,15 +362,26 @@ function UrunEklePaneli({ havuzId, onEklendi, toast }) {
   const [ariyor, setAriyor] = useState(false);
   const [ekleniyor, setEkleniyor] = useState(false);
   const zamanlayici = useRef(null);
+  const aramaRef = useRef(arama);
+  useEffect(() => { aramaRef.current = arama; }, [arama]);
 
   useEffect(() => {
     clearTimeout(zamanlayici.current);
     if (!arama.trim()) { setSonuclar([]); return; }
+    const buAramaMetni = arama;
     zamanlayici.current = setTimeout(async () => {
       setAriyor(true);
-      try { const r = await stokSenkronApi.wcUrunAra(arama.trim()); setSonuclar(r.data); }
-      catch { toast('WooCommerce ürünleri aranamadı', 'error'); }
-      finally { setAriyor(false); }
+      try {
+        const r = await stokSenkronApi.wcUrunAra(buAramaMetni.trim());
+        // Cevap gelene kadar kullanıcı yazmaya devam etmiş olabilir - o
+        // zaman bu artık eski bir aramanın sonucu, güncel kutudaki metinle
+        // eşleşmiyor, yazmayı sessizce yok say (yoksa eski sonuçlar yenisinin
+        // üzerine biner).
+        if (aramaRef.current !== buAramaMetni) return;
+        setSonuclar(r.data);
+      }
+      catch { if (aramaRef.current === buAramaMetni) toast('WooCommerce ürünleri aranamadı', 'error'); }
+      finally { if (aramaRef.current === buAramaMetni) setAriyor(false); }
     }, 400);
     return () => clearTimeout(zamanlayici.current);
   }, [arama]);
