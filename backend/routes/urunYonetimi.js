@@ -13,6 +13,10 @@ const VaryasyonGrubu = require('../models/varyasyonGrubu');
 const BedenTablosu = require('../models/bedenTablosu');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const { sadeceEkip } = require('../middleware/rol');
+// WooCommerce'de gerçek ürün oluşturma/silme - müşteri panelinden hiç
+// kullanılmıyor, ekip-only.
+router.use(sadeceEkip);
 
 function hataYaniti(res, e, varsayilan = 'Bir hata oluştu') {
   console.error('[UrunYonetimi]', e.message);

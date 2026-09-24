@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { Siparis } = require('../models');
+const { sadeceEkip } = require('../middleware/rol');
+// İş istatistikleri (ciro, sipariş sayıları vb.) müşteri hesaplarına
+// gösterilmemeli - ekip-only.
+router.use(sadeceEkip);
 router.get('/', async (req,res) => {
   try {
     const siparisler = await Siparis.find().sort({createdAt:1});

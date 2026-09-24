@@ -8,6 +8,11 @@ const express = require('express');
 const router = express.Router();
 const woo = require('../services/wooSiparis');
 const basitKargo = require('../services/basitKargoClient');
+const { sadeceEkip } = require('../middleware/rol');
+// Üretim/kargo talimatı tamamen dahili bir ekip aracı (ve gerçek kargo
+// etiketi/kod oluşturma - maliyeti olan bir işlem) - müşteri panelinden
+// hiç kullanılmıyor, ekip-only.
+router.use(sadeceEkip);
 const KargoEtiket = require('../models/kargoEtiket');
 const { Ayar } = require('../models');
 

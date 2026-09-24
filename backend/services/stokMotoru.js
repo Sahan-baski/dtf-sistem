@@ -24,7 +24,10 @@ async function havuzStok(havuzId, beden) {
 
 async function havuzStokAyarla(havuzId, beden, miktar) {
   miktar = Math.max(0, parseInt(miktar, 10) || 0);
-  await HavuzBedenStok.findOneAndUpdate({ havuz_id: havuzId, beden }, { miktar }, { upsert: true });
+  // beslendi:true - bu hücreye artık elle/gerçek bir değer girildi, bundan
+  // sonra "mevcutStoktanBesle" bunu bir daha ASLA ezmesin (0 girilse bile -
+  // 0, gerçekten tükendi anlamına gelebilir).
+  await HavuzBedenStok.findOneAndUpdate({ havuz_id: havuzId, beden }, { miktar, beslendi: true }, { upsert: true });
   return miktar;
 }
 
@@ -95,7 +98,7 @@ async function havuzHamStoguAyarla(havuzId, beden, miktar) {
 async function havuzStoguAtomikDusur(havuzId, beden, adet) {
   const guncel = await HavuzBedenStok.findOneAndUpdate(
     { havuz_id: havuzId, beden },
-    { $inc: { miktar: -adet } },
+    { $inc: { miktar: -adet }, $set: { beslendi: true } }, // gerçek bir satış oldu - artık "beslenmemiş" sayılmasın
     { upsert: true, new: true }
   );
   if (guncel.miktar < 0) {
@@ -220,10 +223,20 @@ async function urunuHavuzdanCikar(havuzUrunId) {
 }
 
 /**
- * Havuzun hâlâ 0 olan (hiç elle girilmemiş) bedenlerini, o havuzdaki ürünlerin
- * WooCommerce'te ZATEN kayıtlı gerçek varyasyon stoklarından besler - "tabloyu
- * her açtığımda mevcut stoğum senkron görünmeli" beklentisi için. Havuzda o
- * beden için zaten bir sayı varsa asla üzerine yazmaz.
+ * Havuzun HİÇ dokunulmamış (elle girilmemiş, bir satışla düşmemiş, daha önce
+ * bir kere beslenmemiş) bedenlerini, o havuzdaki ürünlerin WooCommerce'te
+ * ZATEN kayıtlı gerçek varyasyon stoklarından besler - "tabloyu ilk açtığımda
+ * mevcut stoğum senkron görünmeli" (kurulum) beklentisi için.
+ *
+ * ÖNEMLİ: eskiden bu kontrol "miktar > 0 mu?" idi - yani havuz bedeni bir
+ * SATIŞLA (ya da elle) 0'a düşse bile, sırf o an 0 göründüğü için her tablo
+ * açılışında yeniden "beslenip" WooCommerce'te kalmış/kalıntı bir sayıyla
+ * (ör. bir ürün havuza eklendiğinde daha önce sahip olduğu eski stok sayısı)
+ * SESSİZCE dolduruluyordu. Bu, "günlerdir 0 olan bir beden, bir sipariş
+ * sonrası panel açılınca birden 11 oluverdi" bug'ının tam sebebiydi.
+ * Şimdi bunun yerine HavuzBedenStok.beslendi bayrağına bakıyoruz: bu bayrak
+ * true olduktan sonra (elle girildi, bir satış düşürdü ya da daha önce bir
+ * kere zaten beslendi) bu fonksiyon o beden hücresine BİR DAHA ASLA dokunmaz.
  */
 async function mevcutStoktanBesle(havuzId) {
   const urunler = await HavuzUrun.find({ havuz_id: havuzId });
@@ -231,18 +244,30 @@ async function mevcutStoktanBesle(havuzId) {
   const bedenler = await havuzBedenleri(havuzId);
 
   for (const beden of bedenler) {
-    if ((await havuzStok(havuzId, beden)) > 0) continue;
+    const satir = await HavuzBedenStok.findOne({ havuz_id: havuzId, beden });
+    if (satir && satir.beslendi) continue; // daha önce "kesinleşmiş" - WooCommerce'teki sayıya artık hiç bakma
 
     let enYuksek = 0;
+    let kontrolEdilebildi = false; // en az bir ürünün bu bedendeki GERÇEK WC varyasyon stoğuna bakabildik mi
     for (const u of urunler) {
       const v = (u.varyasyonlar || []).find(x => x.beden === beden);
       if (!v || !v.wc_varyasyon_id) continue;
       const varyasyon = await woo.varyasyonGetir(u.wc_urun_id, v.wc_varyasyon_id);
-      if (varyasyon && varyasyon.manage_stock && typeof varyasyon.stock_quantity === 'number' && varyasyon.stock_quantity > enYuksek) {
+      if (!varyasyon) continue;
+      kontrolEdilebildi = true;
+      if (varyasyon.manage_stock && typeof varyasyon.stock_quantity === 'number' && varyasyon.stock_quantity > enYuksek) {
         enYuksek = varyasyon.stock_quantity;
       }
     }
-    if (enYuksek > 0) await havuzHamStoguAyarla(havuzId, beden, enYuksek);
+    // Henüz bu bedende bakabileceğimiz gerçek bir ürün/varyasyon yoksa (ör.
+    // havuza daha yeni bir ürün eklendi, WooCommerce eşlemesi henüz oluşmadı)
+    // "beslendi" diye işaretlemiyoruz - fırsat çıkınca (ör. ürün düzgün
+    // eklenince) tekrar denenebilsin diye. Kontrol edebildiysek (ürün/varyasyon
+    // bulunduysa), stok 0 çıksa bile artık KESİNLEŞMİŞ sayılır - bir daha
+    // WooCommerce'teki sayıya bakılmaz, sadece kendi sistemimiz yönetir.
+    if (!kontrolEdilebildi) continue;
+    if (enYuksek > 0) await havuzHamStoguAyarla(havuzId, beden, enYuksek); // bu beslendi:true'yu da işaretler
+    else await HavuzBedenStok.findOneAndUpdate({ havuz_id: havuzId, beden }, { $set: { beslendi: true } }, { upsert: true });
   }
 }
 

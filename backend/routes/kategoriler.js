@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { Kategori } = require('../models');
+const { sadeceEkip } = require('../middleware/rol');
+// GET / müşteri panelinin sipariş verirken kategori seçmek için kullandığı
+// uç - açık kalmalı. Ama kategori oluşturma/düzenleme/silme ekip-only olmalı.
 const SISTEM = [
   {key:'tisort_baskili',label:'Tişört (baskılı)',grup:'Baskılı Ürün',renk:'#2ecc8f',sistem:true,sira:1},
   {key:'tisort_baskisiz',label:'Tişört (baskısız)',grup:'Baskılı Ürün',renk:'#2ecc8f',sistem:true,sira:2},
@@ -19,7 +22,7 @@ const SISTEM = [
 ];
 async function seed() { if(!(await Kategori.countDocuments())) await Kategori.insertMany(SISTEM); }
 router.get('/', async (req,res) => { try { await seed(); res.json(await Kategori.find({aktif:true}).sort({sira:1})); } catch(e){res.status(500).json({hata:e.message});} });
-router.post('/', async (req,res) => { try { const {label,grup,renk}=req.body; if(!label)return res.status(400).json({hata:'İsim zorunlu'}); const key=label.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')+'_'+Date.now(); const sayi=await Kategori.countDocuments(); res.status(201).json(await Kategori.create({key,label,grup:grup||'Özel',renk:renk||'#7f8c8d',sistem:false,sira:sayi})); } catch(e){res.status(500).json({hata:e.message});} });
-router.put('/:id', async (req,res) => { try { res.json(await Kategori.findByIdAndUpdate(req.params.id,req.body,{new:true})); } catch(e){res.status(500).json({hata:e.message});} });
-router.delete('/:id', async (req,res) => { try { const k=await Kategori.findById(req.params.id); if(!k)return res.status(404).json({hata:'Bulunamadı'}); if(k.sistem)return res.status(400).json({hata:'Sistem kategorisi silinemez'}); await Kategori.findByIdAndDelete(req.params.id); res.json({mesaj:'Silindi'}); } catch(e){res.status(500).json({hata:e.message});} });
+router.post('/', sadeceEkip, async (req,res) => { try { const {label,grup,renk}=req.body; if(!label)return res.status(400).json({hata:'İsim zorunlu'}); const key=label.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')+'_'+Date.now(); const sayi=await Kategori.countDocuments(); res.status(201).json(await Kategori.create({key,label,grup:grup||'Özel',renk:renk||'#7f8c8d',sistem:false,sira:sayi})); } catch(e){res.status(500).json({hata:e.message});} });
+router.put('/:id', sadeceEkip, async (req,res) => { try { res.json(await Kategori.findByIdAndUpdate(req.params.id,req.body,{new:true})); } catch(e){res.status(500).json({hata:e.message});} });
+router.delete('/:id', sadeceEkip, async (req,res) => { try { const k=await Kategori.findById(req.params.id); if(!k)return res.status(404).json({hata:'Bulunamadı'}); if(k.sistem)return res.status(400).json({hata:'Sistem kategorisi silinemez'}); await Kategori.findByIdAndDelete(req.params.id); res.json({mesaj:'Silindi'}); } catch(e){res.status(500).json({hata:e.message});} });
 module.exports = router;

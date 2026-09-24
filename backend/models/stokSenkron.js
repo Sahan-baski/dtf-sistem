@@ -29,6 +29,14 @@ const HavuzBedenStokSchema = new Schema({
   havuz_id: { type: Schema.Types.ObjectId, ref: 'StokHavuzu', required: true, index: true },
   beden: { type: String, required: true },
   miktar: { type: Number, default: 0, min: 0 },
+  // Bu beden hücresine artık "gerçek" (elle girilmiş, bir satışla düşmüş ya da
+  // daha önce WooCommerce'ten bir kere beslenmiş) bir değer mi yazıldı? true
+  // olduktan sonra "mevcutStoktanBesle" bir daha ASLA bu hücreye dokunmaz -
+  // yoksa kurulum sırasında bir kereliğine WooCommerce'teki eski/kalıntı bir
+  // sayıyı "benimseme" amaçlı yazılan mantık, günler sonra 0'a düşmüş
+  // (gerçekten tükenmiş) bir hücreyi sessizce eski bir sayıyla geri
+  // dolduruyordu - panel açıldıkça stokların "kendiliğinden" değiştiği bug'ı.
+  beslendi: { type: Boolean, default: false },
 }, { timestamps: true });
 HavuzBedenStokSchema.index({ havuz_id: 1, beden: 1 }, { unique: true });
 

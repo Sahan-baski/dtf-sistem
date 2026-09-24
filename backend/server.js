@@ -41,10 +41,14 @@ app.get('/{*path}', (req,res) => res.sendFile(path.join(__dirname,'./public/inde
 
 async function seedAdmin() {
   try {
-    const bcrypt = require('bcryptjs');
+    // ÖNEMLİ: eskiden burada, admin kullanıcısının şifresi 'admin123' DEĞİLSE
+    // (yani admin şifresini değiştirmişse) sunucu her yeniden başladığında
+    // şifreyi sessizce 'admin123'e GERİ SIFIRLIYORDU - bu, kim bilse (ya da
+    // bu koddan okuyabilse) herkesin her zaman içeri girebildiği kalıcı bir
+    // arka kapıydı. Şimdi admin hesabı SADECE hiç yoksa (ilk kurulum)
+    // oluşturuluyor - zaten varsa dokunulmuyor.
     const mevcut = await User.findOne({kullanici_adi:'admin'});
-    if (mevcut) { const dogru=await bcrypt.compare('admin123',mevcut.sifre); if(!dogru){mevcut.sifre='admin123';await mevcut.save();console.log('✅ Admin şifresi sıfırlandı');} }
-    else { await User.create({kullanici_adi:'admin',sifre:'admin123',ad:'Yönetici',rol:'admin',aktif:true,onay_bekliyor:false}); console.log('✅ Admin oluşturuldu'); }
+    if (!mevcut) { await User.create({kullanici_adi:'admin',sifre:'admin123',ad:'Yönetici',rol:'admin',aktif:true,onay_bekliyor:false}); console.log('✅ Admin oluşturuldu (kullanıcı adı: admin, şifre: admin123 - lütfen ilk girişte değiştir).'); }
   } catch(e){ console.error('Seed hatası:',e.message); }
 }
 

@@ -10,6 +10,17 @@ const storage = multer.diskStorage({ destination:(req,file,cb)=>cb(null,uploadDi
 const upload = multer({storage,limits:{fileSize:20*1024*1024}});
 router.get('/:siparis_id', async (req,res) => { try { res.json(await Dosya.find({siparis_id:req.params.siparis_id})); } catch(e){res.status(500).json({hata:e.message});} });
 router.post('/yukle/:siparis_id', upload.single('dosya'), async (req,res) => { try { if(!req.file)return res.status(400).json({hata:'Dosya yok'}); const d=await Dosya.create({siparis_id:req.params.siparis_id,orijinal_ad:req.file.originalname,dosya_adi:req.file.filename,boyut:req.file.size,mime:req.file.mimetype,yuklenme:new Date().toISOString()}); res.status(201).json(d); } catch(e){res.status(500).json({hata:e.message});} });
-router.get('/indir/:dosya_adi', (req,res) => { const p=path.join(uploadDir,req.params.dosya_adi); if(!fs.existsSync(p))return res.status(404).json({hata:'Dosya bulunamadı'}); res.download(p); });
+router.get('/indir/:dosya_adi', (req,res) => {
+  // ÖNEMLİ: path.basename() ile "../../.env" gibi bir dosya adının klasör
+  // dışına çıkmasını (dizin gezinme / path traversal) engelliyoruz - eskiden
+  // req.params.dosya_adi doğrudan path.join'e veriliyordu, yani biri
+  // "/api/dosyalar/indir/..%2f..%2f.env" gibi bir istekle sunucudaki .env
+  // dosyasını (JWT_SECRET, WooCommerce anahtarları dahil) indirebilirdi.
+  const temizAd = path.basename(req.params.dosya_adi);
+  const p = path.join(uploadDir, temizAd);
+  if (!p.startsWith(path.join(uploadDir, path.sep)) && p !== uploadDir) return res.status(400).json({hata:'Geçersiz dosya adı'});
+  if(!fs.existsSync(p))return res.status(404).json({hata:'Dosya bulunamadı'});
+  res.download(p);
+});
 router.delete('/:id', async (req,res) => { try { await Dosya.findByIdAndDelete(req.params.id); res.json({mesaj:'Silindi'}); } catch(e){res.status(500).json({hata:e.message});} });
 module.exports = router;

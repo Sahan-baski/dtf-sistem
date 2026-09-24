@@ -3,6 +3,14 @@ const router = express.Router();
 const { Siparis, Gorev, Musteri, Ayar, Kategori } = require('../models');
 const User = require('../models/User');
 const Urun = require('../models/Urun');
+const { sadeceAdmin } = require('../middleware/rol');
+
+// ÖNEMLİ: bu iki rota (tüm veritabanını indirme + "sifirla" modunda TÜM
+// siparişleri/müşterileri/ürünleri SİLİP yerine gönderilen veriyi yazma)
+// eskiden sadece "giriş yapmış olmak" yeterliydi - yani herhangi bir müşteri
+// hesabı bile tüm işletme verisini indirebilir ya da tek istekle komple
+// silebilirdi. Artık sadece admin kullanabilir.
+router.use(sadeceAdmin);
 
 // Yedek al — JSON olarak indir
 router.get('/al', async (req, res) => {

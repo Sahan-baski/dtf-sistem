@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { Siparis } = require('../models');
+const { sadeceEkip } = require('../middleware/rol');
+// Genel özet paneli (tüm siparişlerin durumu vb.) müşteri hesaplarına
+// gösterilmemeli - ekip-only.
+router.use(sadeceEkip);
 router.get('/', async (req,res) => {
   try {
     const bugun = new Date(); bugun.setHours(0,0,0,0);

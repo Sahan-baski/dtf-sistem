@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { Ayar, Siparis } = require('../models');
+const { sadeceAdmin } = require('../middleware/rol');
 const VARSAYILAN = { gunluk_press_kapasitesi:180, min_teslim_gun:2, baski_hazirlama_gun:1 };
 router.get('/', async (req,res) => { try { const list=await Ayar.find(); const s={...VARSAYILAN}; list.forEach(a=>s[a.anahtar]=a.deger); res.json(s); } catch(e){res.status(500).json({hata:e.message});} });
-router.post('/', async (req,res) => { try { for(const [k,v] of Object.entries(req.body)) await Ayar.findOneAndUpdate({anahtar:k},{deger:v},{upsert:true}); res.json({mesaj:'Kaydedildi'}); } catch(e){res.status(500).json({hata:e.message});} });
+// ÖNEMLİ: işletme çapındaki ayarları (günlük kapasite vb.) artık sadece admin
+// değiştirebiliyor - eskiden herhangi bir giriş yapmış kullanıcı değiştirebilirdi.
+router.post('/', sadeceAdmin, async (req,res) => { try { for(const [k,v] of Object.entries(req.body)) await Ayar.findOneAndUpdate({anahtar:k},{deger:v},{upsert:true}); res.json({mesaj:'Kaydedildi'}); } catch(e){res.status(500).json({hata:e.message});} });
 router.get('/teslim-tarihi', async (req,res) => {
   try {
     const ps=parseInt(req.query.press_sayisi)||0;

@@ -2,7 +2,11 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const SECRET = process.env.JWT_SECRET || 'dtf-gizli-2024-xK9mP';
+const { sadeceAdmin } = require('../middleware/rol');
+// middleware/auth.js ile AYNI mantık: sabit yedek değer yok, ayarlanmamışsa
+// modül yüklenirken hata fırlatılır - bkz. middleware/auth.js'deki açıklama.
+const SECRET = process.env.JWT_SECRET;
+if (!SECRET) throw new Error('JWT_SECRET ortam değişkeni ayarlanmamış - sunucu güvenli başlatılamaz.');
 
 router.post('/giris', async (req, res) => {
   try {
@@ -40,14 +44,19 @@ router.get('/ben', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ hata: err.message }); }
 });
 
-router.get('/kullanicilar', authMiddleware, async (req, res) => {
+// ÖNEMLİ: bu dört rota (kullanıcı listeleme/oluşturma/düzenleme/silme) artık
+// sadece admin rolüne açık. Eskiden sadece "giriş yapmış olmak" yeterliydi -
+// yani örneğin kayıt olan herhangi bir müşteri hesabı, kendi kullanıcı
+// kaydını PATCH ile {"rol":"admin"} yaparak tüm panele admin olarak
+// sızabiliyordu. Şimdi sadeceAdmin bunu engelliyor.
+router.get('/kullanicilar', authMiddleware, sadeceAdmin, async (req, res) => {
   try {
     const liste = await User.find().select('-sifre').sort({ createdAt: -1 });
     res.json(liste);
   } catch (err) { res.status(500).json({ hata: err.message }); }
 });
 
-router.post('/kullanicilar', authMiddleware, async (req, res) => {
+router.post('/kullanicilar', authMiddleware, sadeceAdmin, async (req, res) => {
   try {
     const { kullanici_adi, sifre, ad, soyad, rol } = req.body;
     if (!kullanici_adi || !sifre || !ad) return res.status(400).json({ hata: 'Eksik alan' });
@@ -56,7 +65,7 @@ router.post('/kullanicilar', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ hata: err.message }); }
 });
 
-router.patch('/kullanicilar/:id', authMiddleware, async (req, res) => {
+router.patch('/kullanicilar/:id', authMiddleware, sadeceAdmin, async (req, res) => {
   try {
     const { aktif, onay_bekliyor, sifre, rol } = req.body;
     const guncelle = {};
@@ -72,7 +81,7 @@ router.patch('/kullanicilar/:id', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ hata: err.message }); }
 });
 
-router.delete('/kullanicilar/:id', authMiddleware, async (req, res) => {
+router.delete('/kullanicilar/:id', authMiddleware, sadeceAdmin, async (req, res) => {
   try { await User.findByIdAndDelete(req.params.id); res.json({ mesaj: 'Silindi' }); }
   catch (err) { res.status(500).json({ hata: err.message }); }
 });
