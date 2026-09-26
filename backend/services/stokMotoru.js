@@ -289,6 +289,16 @@ async function tabloVerisi(havuzId, { besle = true } = {}) {
   const havuzUrunleri = await HavuzUrun.find({ havuz_id: havuzId }).sort({ createdAt: 1 });
   const masterTasarimlar = await MasterTasarim.find().sort({ ad: 1 });
 
+  // Tasarım Stokları panelinde bir satırı var ama BU TABLODAKİ hiçbir ürüne
+  // bağlanmamış tasarımlar - "elimde kağıdı var ama bu tabloya ürün olarak
+  // hiç eklememişim" durumunu yakalamak için. Sadece bu havuzdaki (aktif
+  // tablodaki) ürünlere bakılıyor - başka bir tabloda bağlı olması burada
+  // saymaz, çünkü kullanıcı o tabloyu görmüyor.
+  const bagliMasterIdlerBuTabloda = new Set(
+    havuzUrunleri.filter(u => u.master_tasarim_id).map(u => String(u.master_tasarim_id))
+  );
+  const bagsizTasarimlar = masterTasarimlar.filter(m => !bagliMasterIdlerBuTabloda.has(String(m._id)));
+
   const urunler = [];
   for (const u of havuzUrunleri) {
     const ts = await tasarimStogu(u);
@@ -319,6 +329,7 @@ async function tabloVerisi(havuzId, { besle = true } = {}) {
     havuz_toplam: havuzToplam,
     urunler,
     master_tasarimlar: masterTasarimlar.map(m => ({ id: m._id, ad: m.ad, stok: m.stok })),
+    bagsiz_tasarimlar: bagsizTasarimlar.map(m => ({ id: m._id, ad: m.ad, stok: m.stok })),
   };
 }
 

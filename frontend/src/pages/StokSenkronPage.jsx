@@ -212,6 +212,16 @@ function HavuzGorunumu({ havuzId, tablo, yukleniyor, onTabloDegisti, toast }) {
         "Tasarım Stoğu" sütunu sadece gösterir, elle girilemez — soldaki "Tasarım Stokları" panelinden değişir. Bir ürünü bir DTF kağıdına bağlamak için "Bağlı Tasarım" sütunundan seçim yap; bağlamazsan ürün "sınırsız" kabul edilir, sadece aşağıdaki havuz (fiziksel ürün) stoğuyla sınırlanır.
       </p>
 
+      {tablo.bagsiz_tasarimlar?.length > 0 && (
+        <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(245,158,11,0.12)', border: '1px solid var(--amber)', borderRadius: 'var(--r-sm)', fontSize: 13 }}>
+          <strong style={{ color: 'var(--amber)' }}>⚠️ {tablo.bagsiz_tasarimlar.length} tasarım bu tabloda hiçbir ürüne bağlı değil:</strong>{' '}
+          {tablo.bagsiz_tasarimlar.map(m => m.ad).join(', ')}
+          <div style={{ fontSize: 12, marginTop: 4, color: 'var(--text3)' }}>
+            Bunlar "Tasarım Stokları" panelinde kayıtlı ama bu tablodaki hiçbir ürüne bağlanmamış — gözünden kaçtıysa siteye ürün olarak yükleyip "Bağlı Tasarım" sütunundan buraya bağla.
+          </div>
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
