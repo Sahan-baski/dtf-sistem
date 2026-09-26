@@ -63,7 +63,12 @@ export const kategoriApi = {
   update:(id,d)=>api.put(`/kategoriler/${id}`,d),
   delete:(id)=>api.delete(`/kategoriler/${id}`),
 };
-export const istatistikApi = { get:()=>api.get('/istatistikler') };
+export const istatistikApi = {
+  get:()=>api.get('/istatistikler'),
+  // WooCommerce'in kendi sipariş geçmişinden hangi üründen ("tasarım") ne
+  // kadar satılmış - yerel Siparis koleksiyonundan bağımsız, canlı çeker.
+  tasarimSatis: (baslangic, bitis) => api.get('/istatistikler/tasarim-satis', { params: { baslangic, bitis } }),
+};
 
 export const stokSenkronApi = {
   havuzlar: () => api.get('/stok-senkron/havuzlar'),

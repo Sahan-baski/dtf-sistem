@@ -94,4 +94,76 @@ async function siparisGetir(id) {
   };
 }
 
-module.exports = { siparisleriListele, siparisGetir, hataMetni };
+/**
+ * Yerel Siparis koleksiyonuna hiç bakmadan, doğrudan WooCommerce'in kendi
+ * sipariş geçmişini tarayıp hangi üründen ("tasarım" - bir ürün genelde tek
+ * bir baskı/tasarıma karşılık geliyor, bedenleri aynı ürün altında toplanıyor)
+ * toplam kaç adet ve kaç TL satılmış olduğunu hesaplar. Sayfa sayfa (100'er
+ * sipariş) TÜM geçmişi tarar - normal bir mağaza ölçeğinde birkaç saniyeyi
+ * geçmez, aşırı büyük bir mağazada sonsuz döngüye girmesin diye MAX_SAYFA
+ * güvenlik sınırı var.
+ */
+async function tasarimBazliSatislar({ durum = 'completed,processing', baslangic, bitis } = {}) {
+  const MAX_SAYFA = 50; // 100/sayfa * 50 = en fazla 5000 sipariş taranır
+  const urunMap = new Map(); // product_id -> { id, ad, adet, gelir }
+  let toplamSiparis = 0;
+  let toplamGelir = 0;
+  let sayfa = 1;
+  let taramaEksikKaldi = false;
+
+  while (sayfa <= MAX_SAYFA) {
+    const { data, headers } = await client().get('/orders', {
+      params: {
+        status: durum || undefined,
+        after: baslangic ? new Date(`${baslangic}T00:00:00`).toISOString() : undefined,
+        before: bitis ? new Date(`${bitis}T23:59:59`).toISOString() : undefined,
+        page: sayfa,
+        per_page: 100,
+        orderby: 'date',
+        order: 'desc',
+      },
+    });
+
+    for (const siparis of data) {
+      toplamSiparis++;
+      for (const kalem of (siparis.line_items || [])) {
+        const id = kalem.product_id;
+        if (!id) continue; // ürün silinmiş/artık yok - yine de sayıya dahil olamıyor
+        const adet = kalem.quantity || 0;
+        const gelir = parseFloat(kalem.total) || 0;
+        toplamGelir += gelir;
+        const mevcut = urunMap.get(id) || { id, ad: kalem.parent_name || kalem.name || `Ürün #${id}`, adet: 0, gelir: 0 };
+        mevcut.adet += adet;
+        mevcut.gelir += gelir;
+        urunMap.set(id, mevcut);
+      }
+    }
+
+    const toplamSayfa = parseInt(headers['x-wp-totalpages'], 10) || 1;
+    if (sayfa >= toplamSayfa) break;
+    if (sayfa === MAX_SAYFA) taramaEksikKaldi = true;
+    sayfa++;
+  }
+
+  const toplamAdet = Array.from(urunMap.values()).reduce((t, u) => t + u.adet, 0);
+  const tasarimlar = Array.from(urunMap.values())
+    .map(u => ({
+      id: u.id,
+      ad: u.ad,
+      adet: u.adet,
+      gelir: Math.round(u.gelir * 100) / 100,
+      oran_adet: toplamAdet > 0 ? Math.round((u.adet / toplamAdet) * 1000) / 10 : 0,
+      oran_gelir: toplamGelir > 0 ? Math.round((u.gelir / toplamGelir) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.adet - a.adet);
+
+  return {
+    tasarimlar,
+    toplam_adet: toplamAdet,
+    toplam_gelir: Math.round(toplamGelir * 100) / 100,
+    toplam_siparis: toplamSiparis,
+    tarama_eksik_kaldi: taramaEksikKaldi, // true ise MAX_SAYFA sınırına takıldı, en eski siparişler sayılmamış olabilir
+  };
+}
+
+module.exports = { siparisleriListele, siparisGetir, tasarimBazliSatislar, hataMetni };

@@ -31,6 +31,107 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
+const TARIH_ARALIKLARI = [
+  { key: 'tumu', ad: 'Tüm Zamanlar' },
+  { key: 'yil', ad: 'Bu Yıl' },
+  { key: '3ay', ad: 'Son 3 Ay' },
+  { key: '30gun', ad: 'Son 30 Gün' },
+];
+
+function aralikTarihleri(key) {
+  if (key === 'tumu') return {};
+  const bugun = new Date();
+  const bas = new Date(bugun);
+  if (key === 'yil') { bas.setMonth(0, 1); }
+  else if (key === '3ay') { bas.setMonth(bas.getMonth() - 3); }
+  else if (key === '30gun') { bas.setDate(bas.getDate() - 30); }
+  return { baslangic: bas.toISOString().split('T')[0], bitis: bugun.toISOString().split('T')[0] };
+}
+
+function TasarimSatislariKarti() {
+  const [veri, setVeri] = useState(null);
+  const [yukleniyor, setYukleniyor] = useState(true);
+  const [hata, setHata] = useState('');
+  const [aralik, setAralik] = useState('tumu');
+  const [metrik, setMetrik] = useState('adet'); // 'adet' | 'gelir'
+
+  useEffect(() => {
+    setYukleniyor(true);
+    setHata('');
+    const { baslangic, bitis } = aralikTarihleri(aralik);
+    istatistikApi.tasarimSatis(baslangic, bitis)
+      .then(r => setVeri(r.data))
+      .catch(e => setHata(e.response?.data?.hata || 'WooCommerce satış verisi alınamadı'))
+      .finally(() => setYukleniyor(false));
+  }, [aralik]);
+
+  const liste = (veri?.tasarimlar || []).slice(0, 15);
+  const enYuksek = liste.length ? Math.max(...liste.map(t => metrik === 'adet' ? t.adet : t.gelir)) : 0;
+
+  return (
+    <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+          <i className="ti ti-shirt" style={{ color: 'var(--accent)', marginRight: 8 }} />
+          Tasarıma Göre Satışlar <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>(WooCommerce sipariş geçmişinden)</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <select className="form-input" style={{ padding: '4px 8px', fontSize: 12, width: 'auto' }} value={aralik} onChange={e => setAralik(e.target.value)}>
+            {TARIH_ARALIKLARI.map(a => <option key={a.key} value={a.key}>{a.ad}</option>)}
+          </select>
+          <select className="form-input" style={{ padding: '4px 8px', fontSize: 12, width: 'auto' }} value={metrik} onChange={e => setMetrik(e.target.value)}>
+            <option value="adet">Adete Göre Sırala</option>
+            <option value="gelir">Ciroya Göre Sırala</option>
+          </select>
+        </div>
+      </div>
+
+      {yukleniyor && <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>WooCommerce'ten sipariş geçmişi taranıyor...</div>}
+      {!yukleniyor && hata && <div style={{ textAlign: 'center', color: 'var(--red)', padding: 24 }}>{hata}</div>}
+
+      {!yukleniyor && !hata && veri && (
+        <>
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
+            <span>Toplam <strong style={{ color: 'var(--text)' }}>{veri.toplam_siparis}</strong> sipariş</span>
+            <span>Toplam <strong style={{ color: 'var(--text)' }}>{veri.toplam_adet}</strong> adet satış</span>
+            <span>Toplam <strong style={{ color: 'var(--green)' }}>{veri.toplam_gelir.toLocaleString('tr-TR')}₺</strong> ciro</span>
+          </div>
+
+          {veri.tarama_eksik_kaldi && (
+            <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 12, padding: '6px 10px', background: 'rgba(245,158,11,0.1)', borderRadius: 'var(--r-sm)' }}>
+              ⚠️ Sipariş geçmişi çok büyük olduğu için tarama bir sınıra takıldı - en eski bazı siparişler bu hesaba dahil olmamış olabilir.
+            </div>
+          )}
+
+          {liste.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Seçili aralıkta satış bulunamadı.</div>
+          ) : liste
+            .slice()
+            .sort((a, b) => metrik === 'adet' ? b.adet - a.adet : b.gelir - a.gelir)
+            .map((t, i) => {
+              const deger = metrik === 'adet' ? t.adet : t.gelir;
+              const oran = metrik === 'adet' ? t.oran_adet : t.oran_gelir;
+              const genislik = enYuksek > 0 ? Math.max(3, (deger / enYuksek) * 100) : 0;
+              return (
+                <div key={t.id} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%', color: 'var(--text)' }}>{t.ad}</span>
+                    <span style={{ color: 'var(--text3)' }}>
+                      {metrik === 'adet' ? `${t.adet} adet` : `${t.gelir.toLocaleString('tr-TR')}₺`} <strong style={{ color: 'var(--text)' }}>· %{oran}</strong>
+                    </span>
+                  </div>
+                  <div style={{ background: 'var(--bg2)', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                    <div style={{ width: `${genislik}%`, height: '100%', background: RENKLER[i % RENKLER.length], borderRadius: 4 }} />
+                  </div>
+                </div>
+              );
+            })}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function IstatistiklerPage() {
   const [data, setData] = useState(null);
   const [yukleniyor, setYukleniyor] = useState(true);
@@ -152,6 +253,8 @@ export default function IstatistiklerPage() {
           ))}
         </div>
       </div>
+
+      <TasarimSatislariKarti />
     </div>
   );
 }

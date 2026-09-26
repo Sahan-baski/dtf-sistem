@@ -1,10 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const { Siparis } = require('../models');
+const woo = require('../services/wooSiparis');
 const { sadeceEkip } = require('../middleware/rol');
 // İş istatistikleri (ciro, sipariş sayıları vb.) müşteri hesaplarına
 // gösterilmemeli - ekip-only.
 router.use(sadeceEkip);
+
+// Yerel Siparis koleksiyonundan DEĞİL, doğrudan WooCommerce'in kendi sipariş
+// geçmişinden - hangi üründen ("tasarım") toplam ne kadar satılmış, oranlarıyla.
+router.get('/tasarim-satis', async (req, res) => {
+  try {
+    const { baslangic, bitis } = req.query;
+    res.json(await woo.tasarimBazliSatislar({ baslangic, bitis }));
+  } catch (e) {
+    console.error('[İstatistikler] Tasarım satış hatası:', e.message);
+    res.status(400).json({ hata: (woo.hataMetni ? woo.hataMetni(e) : null) || e.message || 'WooCommerce satış verisi alınamadı.' });
+  }
+});
 router.get('/', async (req,res) => {
   try {
     const siparisler = await Siparis.find().sort({createdAt:1});
