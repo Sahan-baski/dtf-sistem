@@ -460,6 +460,17 @@ function TasarimStoklariPaneli({ havuzId, masterTasarimlar, onDegisti, goster })
   const [ad, setAd] = useState('');
   const [stok, setStok] = useState('');
   const [ekleniyor, setEkleniyor] = useState(false);
+  const [senkronlaniyor, setSenkronlaniyor] = useState(false);
+
+  const handleYenidenSenkronla = async () => {
+    setSenkronlaniyor(true);
+    try {
+      const r = await stokSenkronApi.tasarimlariYenidenSenkronla();
+      const { toplam, basarili, hatalar } = r.data;
+      goster(hatalar?.length ? `${basarili}/${toplam} ürün senkronlandı (${hatalar.length} hata)` : `${basarili} ürün WooCommerce'e senkronlandı ✓`, hatalar?.length > 0);
+    } catch (e) { goster(e.response?.data?.hata || 'Senkronlanamadı', true); }
+    finally { setSenkronlaniyor(false); }
+  };
 
   const handleEkle = async () => {
     if (!ad.trim()) { goster('Önce bir tasarım adı yaz', true); return; }
@@ -506,6 +517,15 @@ function TasarimStoklariPaneli({ havuzId, masterTasarimlar, onDegisti, goster })
     >
       <strong>✏️ Tasarım Stokları (DTF kağıtların)</strong>
       <p style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 10px' }}>Elindeki her DTF kağıdı/baskı tasarımı için bir satır aç, adını sen belirle, elindeki sayfa/adet sayısını gir. WooCommerce ürünleriyle ilgisi yok — aşağıdaki tablodaki her ürünü "Bağlı Tasarım" sütunundan buradaki bir tasarıma bağlarsın. (Bu paneli sağ alt köşesinden tutup büyütebilirsin.)</p>
+      <button
+        className="btn btn-secondary"
+        style={{ fontSize: 12, padding: '4px 10px', alignSelf: 'flex-start', marginBottom: 10 }}
+        onClick={handleYenidenSenkronla}
+        disabled={senkronlaniyor}
+        title="Bağlı tasarımların isimlerini, mağazada yan yana dizilmeleri için WooCommerce'e yeniden gönderir - bağlantıları değiştirmez, sadece siteye yansıtır. Özellikle 'mağazada değişim olmadı' durumunda bir kere çalıştır."
+      >
+        <i className="ti ti-refresh" />{senkronlaniyor ? 'Senkronlanıyor...' : 'Tüm Bağlantıları WooCommerce\'e Yeniden Gönder'}
+      </button>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         <input className="form-input" value={ad} onChange={e => setAd(e.target.value)} placeholder="Tasarım adı (ör. Fatih Sultan Mehmet)" style={{ flex: 1 }} />
         <input className="form-input" type="number" min="0" value={stok} onChange={e => setStok(e.target.value)} placeholder="Adet" style={{ width: 70 }} />

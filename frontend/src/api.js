@@ -86,6 +86,8 @@ export const stokSenkronApi = {
   masterTasarimOlustur: (ad,stok,havuzId) => api.post('/stok-senkron/master-tasarimlar', { ad, stok, havuz_id:havuzId }),
   masterTasarimGuncelle: (id,d,havuzId) => api.put(`/stok-senkron/master-tasarimlar/${id}`, { ...d, havuz_id:havuzId }),
   masterTasarimSil: (id,havuzId) => api.delete(`/stok-senkron/master-tasarimlar/${id}`, { params:{ havuz_id:havuzId } }),
+  // Tek seferlik telafi: bu özellik eklenmeden önce bağlanmış tasarımları da WooCommerce'e gönderir.
+  tasarimlariYenidenSenkronla: () => api.post('/stok-senkron/master-tasarimlar/yeniden-senkronla'),
 };
 
 export const fiyatApi = {

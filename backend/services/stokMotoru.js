@@ -164,8 +164,26 @@ async function masterTasarimOlustur(ad, stok) {
   return doc;
 }
 
+/**
+ * "Mağaza Görünümü" eklentisine, bu ürünün mağaza sayfasında hangi tasarım
+ * etiketiyle gruplanacağını gönderir (ad='' ise etiketi temizler). Tek bir
+ * yerde (burada) çağrılan tasarım bağlantısı hem stok hesabını hem WooCommerce
+ * tarafındaki mağaza görünümünü otomatik güncel tutuyor - iki ayrı yerde elle
+ * senkron tutmaya gerek kalmasın diye. WooCommerce'e ulaşılamazsa (site
+ * kapalı, eklenti henüz güncellenmemiş vb.) sessizce loglayıp devam ediyoruz
+ * - bu, stok bağlantısının kendisini ASLA bloklamamalı.
+ */
+async function wooTasarimEtiketiSenkronla(wcUrunId, ad) {
+  try { await woo.tasarimEtiketiYaz(wcUrunId, ad); }
+  catch (e) { console.error('[StokSenkron] Tasarım etiketi WooCommerce\'e yazılamadı:', e.message); }
+}
+
 async function masterTasarimAdDegistir(masterId, ad) {
   await MasterTasarim.findByIdAndUpdate(masterId, { ad });
+  // Bu tasarıma bağlı TÜM ürünlere yeni ismi yansıt - eskisiyle mağazada
+  // yarım yamalak/eski bir isimle kalmasınlar.
+  const bagliUrunler = await HavuzUrun.find({ master_tasarim_id: masterId });
+  for (const u of bagliUrunler) await wooTasarimEtiketiSenkronla(u.wc_urun_id, ad);
 }
 
 async function baglantiyiKaldir(havuzUrunId) {
@@ -174,20 +192,48 @@ async function baglantiyiKaldir(havuzUrunId) {
   const donmusDeger = await tasarimStogu(havuzUrun); // bağlıyken çözümlenmiş son değer
   await HavuzUrun.findByIdAndUpdate(havuzUrunId, { tasarim_stogu: donmusDeger, master_tasarim_id: null });
   await urununTumBedenleriniYenidenHesapla(havuzUrunId);
+  await wooTasarimEtiketiSenkronla(havuzUrun.wc_urun_id, '');
 }
 
 async function masterTasarimaBagla(havuzUrunId, masterId) {
   if (!masterId) return baglantiyiKaldir(havuzUrunId);
   const master = await MasterTasarim.findById(masterId);
   if (!master) throw new Error('Seçilen tasarım bulunamadı.');
-  await HavuzUrun.findByIdAndUpdate(havuzUrunId, { master_tasarim_id: masterId });
+  const havuzUrun = await HavuzUrun.findByIdAndUpdate(havuzUrunId, { master_tasarim_id: masterId }, { new: true });
   await urununTumBedenleriniYenidenHesapla(havuzUrunId);
+  if (havuzUrun) await wooTasarimEtiketiSenkronla(havuzUrun.wc_urun_id, master.ad);
 }
 
 async function masterTasarimSil(masterId) {
   const bagliUrunler = await HavuzUrun.find({ master_tasarim_id: masterId });
   for (const u of bagliUrunler) await baglantiyiKaldir(u._id);
   await MasterTasarim.findByIdAndDelete(masterId);
+}
+
+/**
+ * "Mağaza Görünümü" eklentisine tasarım senkronu eklenmeden ÖNCE zaten bir
+ * Master Tasarım'a bağlanmış ürünler için WooCommerce'e hiç etiket
+ * gönderilmemiştir (senkron sadece BAĞLANTI DEĞİŞTİĞİNDE tetiklenir). Bunu bir
+ * kerelik telafi etmek için: TÜM mevcut bağlantıları tarayıp şu anki
+ * isimleriyle yeniden gönderir. Panelden elle tetiklenen tek seferlik bir
+ * "yeniden senkronla" işlemi - stok hesaplarına hiç dokunmuyor, sadece
+ * WooCommerce'teki tasarım etiketini güncel bağlantıyla eşitliyor.
+ */
+async function tumBaglantilariYenidenSenkronla() {
+  const bagliUrunler = await HavuzUrun.find({ master_tasarim_id: { $ne: null } }).populate('master_tasarim_id');
+  let basarili = 0;
+  const hatalar = [];
+  for (const u of bagliUrunler) {
+    const ad = u.master_tasarim_id?.ad;
+    if (!ad) continue; // bağlantı bozuksa (silinmiş tasarıma işaret ediyorsa) atla
+    try {
+      await woo.tasarimEtiketiYaz(u.wc_urun_id, ad);
+      basarili++;
+    } catch (e) {
+      hatalar.push({ wc_urun_id: u.wc_urun_id, hata: e.message });
+    }
+  }
+  return { toplam: bagliUrunler.length, basarili, hatalar };
 }
 
 /** Bir WooCommerce ürününü (değişken tip) havuza ekler / bedenlerini yeniden tespit eder. */
@@ -381,6 +427,7 @@ module.exports = {
   masterTasarimSil,
   masterTasarimaBagla,
   baglantiyiKaldir,
+  tumBaglantilariYenidenSenkronla,
   urunuHavuzaEkle,
   urunuHavuzdanCikar,
   tabloVerisi,

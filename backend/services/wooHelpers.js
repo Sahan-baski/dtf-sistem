@@ -90,6 +90,21 @@ function duzenlemeLinki(urunId) {
   return base ? `${base}/wp-admin/post.php?post=${urunId}&action=edit` : '';
 }
 
+/**
+ * Bir ürünü, "Mağaza Görünümü" eklentisinin mağaza sayfasında aynı tasarımlı
+ * ürünleri yan yana dizmek için kullandığı "Tasarım" etiketine atar (ad boş
+ * gönderilirse etiket temizlenir). Eklenti REST isteğindeki "sbc_tasarim"
+ * alanını yakalayıp kendi taksonomisine yazıyor - burada WooCommerce'in
+ * standart ürün güncelleme uç noktasını (zaten fiyat/stok için kullandığımız
+ * aynı istemci) kullanıyoruz, ayrı bir bağlantı/kimlik bilgisi gerekmiyor.
+ * "En iyi çaba" niteliğinde: eklenti kurulu değilse ya da erişilemezse
+ * WooCommerce muhtemelen bu alanı sessizce yok sayar - hata fırlatmıyoruz ki
+ * asıl stok/bağlantı işlemi bundan etkilenmesin.
+ */
+async function tasarimEtiketiYaz(urunId, ad) {
+  await client().put(`/products/${urunId}`, { sbc_tasarim: ad || '' });
+}
+
 module.exports = {
   bedenNormallestir,
   bedeneGoreVaryasyonlariTespitEt,
@@ -98,5 +113,6 @@ module.exports = {
   varyasyonStokYaz,
   degiskenUrunAra,
   duzenlemeLinki,
+  tasarimEtiketiYaz,
   hataMetni,
 };

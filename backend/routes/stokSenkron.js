@@ -9,6 +9,11 @@ const router = express.Router();
 const { StokHavuzu, HavuzBedenStok, HavuzUrun, MasterTasarim } = require('../models/stokSenkron');
 const motor = require('../services/stokMotoru');
 const woo = require('../services/wooHelpers');
+const { sadeceEkip } = require('../middleware/rol');
+// Ortak Stok Senkron dahili bir ekip aracı - müşteri panelinden hiç
+// kullanılmıyor, ve buradaki "test satışı" gibi işlemler gerçek WooCommerce
+// stoğunu değiştirebiliyor - ekip-only.
+router.use(sadeceEkip);
 
 function hataYaniti(res, e, varsayilan = 'Bir hata oluştu') {
   console.error('[StokSenkron]', e.message);
@@ -160,6 +165,14 @@ router.delete('/master-tasarimlar/:id', async (req, res) => {
     await motor.masterTasarimSil(req.params.id);
     res.json({ tablo: req.query.havuz_id ? await motor.tabloVerisi(req.query.havuz_id, { besle: false }) : null });
   } catch (e) { hataYaniti(res, e); }
+});
+
+// Tek seferlik telafi: "Mağaza Görünümü" eklentisine tasarım senkronu
+// eklenmeden ÖNCE zaten bağlanmış ürünler için hiç etiket gönderilmemiştir -
+// bu, mevcut TÜM bağlantıları şu anki isimleriyle WooCommerce'e yeniden gönderir.
+router.post('/master-tasarimlar/yeniden-senkronla', async (req, res) => {
+  try { res.json(await motor.tumBaglantilariYenidenSenkronla()); }
+  catch (e) { hataYaniti(res, e, 'Yeniden senkronlanamadı.'); }
 });
 
 // ----- Test Satışı (gerçek bir sipariş olmadan simülasyon) -----
