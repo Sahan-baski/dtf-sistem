@@ -561,37 +561,52 @@ function OrtakGorsellerPaneli({ havuzId, urunSayisi, goster }) {
   const [dosya, setDosya] = useState(null);
   const [ekleniyor, setEkleniyor] = useState(false);
   const [uygulaniyor, setUygulaniyor] = useState(false);
+  // Üstteki paylaşılan "mesaj" banner'ı sayfanın yukarısında, bu karttan uzakta
+  // kalabiliyor - kullanıcı bir şey olmadığını sanabiliyor. Bu yüzden ayrıca
+  // KARTIN İÇİNDE, tam butonun altında, gözden kaçmayacak yerel bir mesaj da
+  // gösteriyoruz; aynı anda üsttekini de (goster) tetikliyoruz.
+  const [yerelMesaj, setYerelMesaj] = useState(null); // { metin, hata }
   const dosyaInputRef = useRef(null);
+
+  const bildir = (metin, hata) => {
+    setYerelMesaj({ metin, hata: !!hata });
+    goster(metin, hata);
+  };
 
   const listeyiYukle = useCallback(async () => {
     if (!havuzId) return;
     try { const r = await stokSenkronApi.havuzGorselleri(havuzId); setGorseller(r.data); }
-    catch { /* sessiz - kart zaten boş görünür */ }
+    catch (e) { console.error('[OrtakGorseller] Liste çekilemedi:', e); }
   }, [havuzId]);
 
   useEffect(() => { listeyiYukle(); }, [listeyiYukle]);
 
   const handleEkle = async () => {
-    if (!dosya) { goster('Önce bir görsel seç', true); return; }
+    if (!dosya) { bildir('Önce bir görsel dosyası seç (üstteki "Dosya Seç" alanından).', true); return; }
     setEkleniyor(true);
+    setYerelMesaj({ metin: 'Yükleniyor... (görsel WordPress\'e gönderiliyor, büyük dosyalarda biraz sürebilir)', hata: false });
     try {
       const fd = new FormData();
       fd.append('resim', dosya);
       fd.append('ad', ad.trim());
       const r = await stokSenkronApi.havuzGorselEkle(havuzId, fd);
       const { toplam, basarili, hatalar } = r.data;
-      goster(hatalar?.length ? `Eklendi, ${basarili}/${toplam} ürüne uygulandı (${hatalar.length} hata)` : `Eklendi ve ${basarili} ürüne uygulandı ✓`, hatalar?.length > 0);
+      bildir(hatalar?.length ? `Eklendi, ${basarili}/${toplam} ürüne uygulandı (${hatalar.length} hata - konsola bak)` : `Eklendi ve ${basarili} ürüne uygulandı ✓`, hatalar?.length > 0);
+      if (hatalar?.length) console.error('[OrtakGorseller] Bazı ürünlere uygulanamadı:', hatalar);
       setAd(''); setDosya(null);
       if (dosyaInputRef.current) dosyaInputRef.current.value = '';
       listeyiYukle();
-    } catch (e) { goster(e.response?.data?.hata || 'Görsel eklenemedi', true); }
-    finally { setEkleniyor(false); }
+    } catch (e) {
+      console.error('[OrtakGorseller] Ekleme hatası:', e, 'Sunucu cevabı:', e.response?.status, e.response?.data);
+      const sunucuMesaji = typeof e.response?.data?.hata === 'string' ? e.response.data.hata : null;
+      bildir(sunucuMesaji || `Görsel eklenemedi (${e.response?.status || 'bağlantı hatası'}) - tarayıcı konsolunu (F12) kontrol et.`, true);
+    } finally { setEkleniyor(false); }
   };
 
   const handleSil = async (gorselId) => {
     if (!confirm('Bu ortak görseli listeden kaldırmak istediğine emin misin? Zaten ürünlerin galerisine eklenmiş kopyaları siteden otomatik silinmez - istersen WooCommerce\'den elle kaldırabilirsin.')) return;
     try { await stokSenkronApi.havuzGorselSil(havuzId, gorselId); listeyiYukle(); }
-    catch { goster('Silinemedi', true); }
+    catch (e) { console.error('[OrtakGorseller] Silme hatası:', e); bildir('Silinemedi', true); }
   };
 
   const handleYenidenUygula = async () => {
@@ -599,8 +614,8 @@ function OrtakGorsellerPaneli({ havuzId, urunSayisi, goster }) {
     try {
       const r = await stokSenkronApi.havuzGorselleriniYenidenUygula(havuzId);
       const { basarili, hatalar } = r.data;
-      goster(hatalar?.length ? `${basarili} uygulama yapıldı (${hatalar.length} hata)` : 'Tüm görseller tüm ürünlere yeniden uygulandı ✓', hatalar?.length > 0);
-    } catch (e) { goster(e.response?.data?.hata || 'Yeniden uygulanamadı', true); }
+      bildir(hatalar?.length ? `${basarili} uygulama yapıldı (${hatalar.length} hata)` : 'Tüm görseller tüm ürünlere yeniden uygulandı ✓', hatalar?.length > 0);
+    } catch (e) { console.error('[OrtakGorseller] Yeniden uygulama hatası:', e); bildir(e.response?.data?.hata || 'Yeniden uygulanamadı', true); }
     finally { setUygulaniyor(false); }
   };
 
@@ -618,6 +633,17 @@ function OrtakGorsellerPaneli({ havuzId, urunSayisi, goster }) {
           <i className="ti ti-upload" />{ekleniyor ? 'Ekleniyor...' : 'Ekle ve Tüm Ürünlere Uygula'}
         </button>
       </div>
+
+      {yerelMesaj && (
+        <div style={{
+          marginBottom: 10, padding: '6px 10px', borderRadius: 'var(--r-sm)', fontSize: 12,
+          background: yerelMesaj.hata ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
+          color: yerelMesaj.hata ? 'var(--red)' : 'var(--green, #22c55e)',
+          border: `1px solid ${yerelMesaj.hata ? 'var(--red)' : 'var(--green, #22c55e)'}`,
+        }}>
+          {yerelMesaj.metin}
+        </div>
+      )}
 
       {gorseller.length > 0 && (
         <>

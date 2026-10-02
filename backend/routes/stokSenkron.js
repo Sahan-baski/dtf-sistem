@@ -190,7 +190,22 @@ router.get('/havuzlar/:id/gorseller', async (req, res) => {
   catch (e) { hataYaniti(res, e); }
 });
 
-router.post('/havuzlar/:id/gorseller', upload.single('resim'), async (req, res) => {
+// multer'ı doğrudan route'a değil, bu sarmalayıcıya veriyoruz - yoksa (ör.
+// dosya 15MB sınırını aşarsa) multer'ın fırlattığı hata Express'in genel
+// hata işleyicisine düşüyor ve tarayıcıya JSON değil düz metin/HTML dönüyor -
+// frontend'de "e.response.data.hata" o zaman okunamıyor, kullanıcı hiçbir
+// anlamlı mesaj görmeden "hiçbir şey olmadı" sanıyordu. Burada hatayı
+// yakalayıp her zaman okunabilir bir JSON'a çeviriyoruz.
+function resimYukleMiddleware(req, res, next) {
+  upload.single('resim')(req, res, (err) => {
+    if (!err) return next();
+    console.error('[StokSenkron] Ortak görsel multer hatası:', err.code || err.message);
+    const mesaj = err.code === 'LIMIT_FILE_SIZE' ? 'Görsel çok büyük (en fazla 15MB) - daha küçük bir dosya dene.' : (err.message || 'Görsel yüklenemedi.');
+    res.status(400).json({ hata: mesaj });
+  });
+}
+
+router.post('/havuzlar/:id/gorseller', resimYukleMiddleware, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ hata: 'Görsel gerekli.' });
     const ad = (req.body.ad || '').trim();
