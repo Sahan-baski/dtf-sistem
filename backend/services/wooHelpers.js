@@ -4,6 +4,7 @@
  * bulma, varyasyon stoğu yazma) - sadece artık PHP/$wpdb yerine REST API.
  */
 const { client, siteUrl, hataMetni } = require('./wooClient');
+const wp = require('./wpClient');
 
 function bedenNormallestir(deger) {
   return String(deger || '').trim().toLowerCase();
@@ -105,6 +106,38 @@ async function tasarimEtiketiYaz(urunId, ad) {
   await client().put(`/products/${urunId}`, { sbc_tasarim: ad || '' });
 }
 
+/** Bir görseli WordPress medya kütüphanesine yükler, WooCommerce'de kullanılacak medya ID'sini ve URL'sini döner. */
+async function resimYukle(buffer, dosyaAdi, mimeType) {
+  const { data } = await wp.client().post('/media', buffer, {
+    headers: {
+      'Content-Disposition': `attachment; filename="${dosyaAdi.replace(/"/g, '')}"`,
+      'Content-Type': mimeType,
+    },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return { id: data.id, url: data.source_url };
+}
+
+/**
+ * "Ortak Görseller" (ör. beden tablosu, yakın çekim kumaş detayı) - bir
+ * görseli bir ürünün galerisine EK fotoğraf olarak ekler, mevcut fotoğrafları
+ * ve ana görseli KORUR. Aynı görsel (medya ID) zaten galeride varsa tekrar
+ * eklenmez - aynı ürüne birden fazla kez güvenle uygulanabilir (bir havuza
+ * yeni ürün eklendiğinde ya da "yeniden uygula" ile tekrar denendiğinde).
+ */
+async function galeriGorselEkle(urunId, { mediaId }) {
+  const { data: urun } = await client().get(`/products/${urunId}`);
+  const mevcutGorseller = urun.images || [];
+  if (mevcutGorseller.some(g => g.id === mediaId)) return { degisti: false };
+  const images = [
+    ...mevcutGorseller.map(g => (g.id ? { id: g.id } : { src: g.src })),
+    { id: mediaId },
+  ];
+  await client().put(`/products/${urunId}`, { images });
+  return { degisti: true };
+}
+
 module.exports = {
   bedenNormallestir,
   bedeneGoreVaryasyonlariTespitEt,
@@ -114,5 +147,8 @@ module.exports = {
   degiskenUrunAra,
   duzenlemeLinki,
   tasarimEtiketiYaz,
+  resimYukle,
+  galeriGorselEkle,
   hataMetni,
+  wpHataMetni: wp.hataMetni,
 };

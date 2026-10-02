@@ -88,6 +88,13 @@ export const stokSenkronApi = {
   masterTasarimSil: (id,havuzId) => api.delete(`/stok-senkron/master-tasarimlar/${id}`, { params:{ havuz_id:havuzId } }),
   // Tek seferlik telafi: bu özellik eklenmeden önce bağlanmış tasarımları da WooCommerce'e gönderir.
   tasarimlariYenidenSenkronla: () => api.post('/stok-senkron/master-tasarimlar/yeniden-senkronla'),
+
+  // Ortak Görseller: beden tablosu / kumaş detayı gibi bir havuzdaki TÜM
+  // ürünlere birden uygulanan galeri görselleri.
+  havuzGorselleri: (havuzId) => api.get(`/stok-senkron/havuzlar/${havuzId}/gorseller`),
+  havuzGorselEkle: (havuzId, formData) => api.post(`/stok-senkron/havuzlar/${havuzId}/gorseller`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  havuzGorselSil: (havuzId, gorselId) => api.delete(`/stok-senkron/havuzlar/${havuzId}/gorseller/${gorselId}`),
+  havuzGorselleriniYenidenUygula: (havuzId) => api.post(`/stok-senkron/havuzlar/${havuzId}/gorseller/yeniden-uygula`),
 };
 
 export const fiyatApi = {

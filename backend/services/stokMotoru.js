@@ -9,7 +9,7 @@
  * Bu iki sayıdan biri değiştiğinde etkilenen tüm hücreler yeniden hesaplanıp
  * ilgili WooCommerce varyasyonuna hemen (REST API ile) yazılır.
  */
-const { StokHavuzu, HavuzBedenStok, MasterTasarim, HavuzUrun, SINIRSIZ_TASARIM_STOGU } = require('../models/stokSenkron');
+const { StokHavuzu, HavuzBedenStok, MasterTasarim, HavuzUrun, HavuzGorsel, SINIRSIZ_TASARIM_STOGU } = require('../models/stokSenkron');
 const woo = require('./wooHelpers');
 
 async function havuzBedenleri(havuzId) {
@@ -236,6 +236,64 @@ async function tumBaglantilariYenidenSenkronla() {
   return { toplam: bagliUrunler.length, basarili, hatalar };
 }
 
+/**
+ * Bir havuzun kayıtlı TÜM "ortak görsellerini" (beden tablosu, kumaş detayı
+ * vb.) TEK bir WC ürününün galerisine uygular - "en iyi çaba": bir görsel
+ * uygulanamazsa loglar ve diğerlerini denemeye devam eder, ASLA fırlatmaz -
+ * bu, bir ürünü havuza eklemenin/bağlamanın kendisini bloklamamalı.
+ */
+async function havuzGorselleriniUruneUygula(havuzId, wcUrunId) {
+  let gorseller;
+  try { gorseller = await HavuzGorsel.find({ havuz_id: havuzId }); }
+  catch (e) { console.error('[StokSenkron] Ortak görseller okunamadı:', e.message); return; }
+  for (const g of gorseller) {
+    try { await woo.galeriGorselEkle(wcUrunId, { mediaId: g.wp_media_id }); }
+    catch (e) { console.error('[StokSenkron] Ortak görsel uygulanamadı:', wcUrunId, g.ad || g.url, woo.hataMetni ? woo.hataMetni(e) : e.message); }
+  }
+}
+
+async function havuzGorselleri(havuzId) {
+  return HavuzGorsel.find({ havuz_id: havuzId }).sort({ createdAt: 1 });
+}
+
+/** Havuza yeni bir ortak görsel kaydeder ve HEMEN o havuzdaki TÜM mevcut ürünlere uygular. */
+async function havuzGorselEkleVeUygula(havuzId, { ad, wpMediaId, url }) {
+  const gorsel = await HavuzGorsel.create({ havuz_id: havuzId, ad: ad || '', wp_media_id: wpMediaId, url });
+  const urunler = await HavuzUrun.find({ havuz_id: havuzId });
+  let basarili = 0;
+  const hatalar = [];
+  for (const u of urunler) {
+    try { await woo.galeriGorselEkle(u.wc_urun_id, { mediaId: wpMediaId }); basarili++; }
+    catch (e) { hatalar.push({ wc_urun_id: u.wc_urun_id, hata: woo.hataMetni ? woo.hataMetni(e) : e.message }); }
+  }
+  return { gorsel, toplam: urunler.length, basarili, hatalar };
+}
+
+async function havuzGorselSil(gorselId) {
+  await HavuzGorsel.findByIdAndDelete(gorselId);
+}
+
+/**
+ * Telafi/tekrar-dene: havuzun kayıtlı TÜM ortak görsellerini, o havuzdaki
+ * TÜM ürünlere yeniden dener - bir ürün eklenirken bir görsel uygulaması
+ * hata verdiyse, ya da görsel eklenmeden ÖNCE zaten tabloda olan ürünleri
+ * kapsamak için kullanılır. Zaten uygulanmış olanlar (aynı medya ID galeride
+ * varsa) tekrar eklenmez - güvenle istenildiği kadar çalıştırılabilir.
+ */
+async function havuzGorselleriniYenidenUygula(havuzId) {
+  const gorseller = await HavuzGorsel.find({ havuz_id: havuzId });
+  const urunler = await HavuzUrun.find({ havuz_id: havuzId });
+  let basarili = 0;
+  const hatalar = [];
+  for (const u of urunler) {
+    for (const g of gorseller) {
+      try { await woo.galeriGorselEkle(u.wc_urun_id, { mediaId: g.wp_media_id }); basarili++; }
+      catch (e) { hatalar.push({ wc_urun_id: u.wc_urun_id, gorsel: g.ad || g.url, hata: woo.hataMetni ? woo.hataMetni(e) : e.message }); }
+    }
+  }
+  return { toplam_urun: urunler.length, toplam_gorsel: gorseller.length, basarili, hatalar };
+}
+
 /** Bir WooCommerce ürününü (değişken tip) havuza ekler / bedenlerini yeniden tespit eder. */
 async function urunuHavuzaEkle(havuzId, wcUrunId) {
   const bedenler = await havuzBedenleri(havuzId);
@@ -247,21 +305,29 @@ async function urunuHavuzaEkle(havuzId, wcUrunId) {
   const urun = await woo.urunGetir(wcUrunId);
 
   const mevcut = await HavuzUrun.findOne({ havuz_id: havuzId, wc_urun_id: wcUrunId });
+  let sonuc;
   if (mevcut) {
     mevcut.varyasyonlar = varyasyonlar;
     if (urun) { mevcut.wc_urun_adi = urun.name; mevcut.wc_duzenleme_linki = woo.duzenlemeLinki(wcUrunId); }
     await mevcut.save();
-    return mevcut;
+    sonuc = mevcut;
+  } else {
+    sonuc = await HavuzUrun.create({
+      havuz_id: havuzId,
+      wc_urun_id: wcUrunId,
+      wc_urun_adi: urun ? urun.name : `#${wcUrunId}`,
+      wc_duzenleme_linki: woo.duzenlemeLinki(wcUrunId),
+      tasarim_stogu: SINIRSIZ_TASARIM_STOGU,
+      varyasyonlar,
+    });
   }
 
-  return HavuzUrun.create({
-    havuz_id: havuzId,
-    wc_urun_id: wcUrunId,
-    wc_urun_adi: urun ? urun.name : `#${wcUrunId}`,
-    wc_duzenleme_linki: woo.duzenlemeLinki(wcUrunId),
-    tasarim_stogu: SINIRSIZ_TASARIM_STOGU,
-    varyasyonlar,
-  });
+  // Havuzun kayıtlı ortak görselleri (beden tablosu, kumaş detayı vb.) varsa
+  // bu ürüne de (yeni eklendiyse ya da yeniden tespit edildiyse) yansıt -
+  // "en iyi çaba", asla ana ürün ekleme işlemini bloklamaz.
+  await havuzGorselleriniUruneUygula(havuzId, wcUrunId);
+
+  return sonuc;
 }
 
 async function urunuHavuzdanCikar(havuzUrunId) {
@@ -430,6 +496,10 @@ module.exports = {
   tumBaglantilariYenidenSenkronla,
   urunuHavuzaEkle,
   urunuHavuzdanCikar,
+  havuzGorselleri,
+  havuzGorselEkleVeUygula,
+  havuzGorselSil,
+  havuzGorselleriniYenidenUygula,
   tabloVerisi,
   satisUygula,
   varyasyonIdIleBul,

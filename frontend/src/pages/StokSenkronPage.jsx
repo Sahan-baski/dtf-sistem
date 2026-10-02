@@ -208,6 +208,8 @@ function HavuzGorunumu({ havuzId, tablo, yukleniyor, onTabloDegisti, toast }) {
         <TasarimStoklariPaneli havuzId={havuzId} masterTasarimlar={tablo.master_tasarimlar} onDegisti={onTabloDegisti} goster={goster} />
       </div>
 
+      <OrtakGorsellerPaneli havuzId={havuzId} urunSayisi={tablo.urunler.length} goster={goster} />
+
       <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
         "Tasarım Stoğu" sütunu sadece gösterir, elle girilemez — soldaki "Tasarım Stokları" panelinden değişir. Bir ürünü bir DTF kağıdına bağlamak için "Bağlı Tasarım" sütunundan seçim yap; bağlamazsan ürün "sınırsız" kabul edilir, sadece aşağıdaki havuz (fiziksel ürün) stoğuyla sınırlanır.
       </p>
@@ -541,6 +543,109 @@ function TasarimStoklariPaneli({ havuzId, masterTasarimlar, onDegisti, goster })
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Havuz bazlı "ortak görseller" - beden tablosu, yakın çekim kumaş detayı
+ * gibi bu tablodaki TÜM ürünlerde aynı olan görseller. Bir görsel eklendiğinde
+ * hem bu tablodaki TÜM mevcut ürünlerin galerisine hemen uygulanır, hem de
+ * (backend'de urunuHavuzaEkle içinde) bundan sonra tabloya eklenecek her yeni
+ * ürüne otomatik uygulanır - ana ürün görselini DEĞİŞTİRMEZ, galeriye ek
+ * fotoğraf olarak eklenir.
+ */
+function OrtakGorsellerPaneli({ havuzId, urunSayisi, goster }) {
+  const [gorseller, setGorseller] = useState([]);
+  const [ad, setAd] = useState('');
+  const [dosya, setDosya] = useState(null);
+  const [ekleniyor, setEkleniyor] = useState(false);
+  const [uygulaniyor, setUygulaniyor] = useState(false);
+  const dosyaInputRef = useRef(null);
+
+  const listeyiYukle = useCallback(async () => {
+    if (!havuzId) return;
+    try { const r = await stokSenkronApi.havuzGorselleri(havuzId); setGorseller(r.data); }
+    catch { /* sessiz - kart zaten boş görünür */ }
+  }, [havuzId]);
+
+  useEffect(() => { listeyiYukle(); }, [listeyiYukle]);
+
+  const handleEkle = async () => {
+    if (!dosya) { goster('Önce bir görsel seç', true); return; }
+    setEkleniyor(true);
+    try {
+      const fd = new FormData();
+      fd.append('resim', dosya);
+      fd.append('ad', ad.trim());
+      const r = await stokSenkronApi.havuzGorselEkle(havuzId, fd);
+      const { toplam, basarili, hatalar } = r.data;
+      goster(hatalar?.length ? `Eklendi, ${basarili}/${toplam} ürüne uygulandı (${hatalar.length} hata)` : `Eklendi ve ${basarili} ürüne uygulandı ✓`, hatalar?.length > 0);
+      setAd(''); setDosya(null);
+      if (dosyaInputRef.current) dosyaInputRef.current.value = '';
+      listeyiYukle();
+    } catch (e) { goster(e.response?.data?.hata || 'Görsel eklenemedi', true); }
+    finally { setEkleniyor(false); }
+  };
+
+  const handleSil = async (gorselId) => {
+    if (!confirm('Bu ortak görseli listeden kaldırmak istediğine emin misin? Zaten ürünlerin galerisine eklenmiş kopyaları siteden otomatik silinmez - istersen WooCommerce\'den elle kaldırabilirsin.')) return;
+    try { await stokSenkronApi.havuzGorselSil(havuzId, gorselId); listeyiYukle(); }
+    catch { goster('Silinemedi', true); }
+  };
+
+  const handleYenidenUygula = async () => {
+    setUygulaniyor(true);
+    try {
+      const r = await stokSenkronApi.havuzGorselleriniYenidenUygula(havuzId);
+      const { basarili, hatalar } = r.data;
+      goster(hatalar?.length ? `${basarili} uygulama yapıldı (${hatalar.length} hata)` : 'Tüm görseller tüm ürünlere yeniden uygulandı ✓', hatalar?.length > 0);
+    } catch (e) { goster(e.response?.data?.hata || 'Yeniden uygulanamadı', true); }
+    finally { setUygulaniyor(false); }
+  };
+
+  return (
+    <div className="card" style={{ padding: 16, marginBottom: 18 }}>
+      <strong>🖼️ Ortak Görseller</strong>
+      <p style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 10px' }}>
+        Beden tablosu ya da yakın çekim kumaş detayı gibi, bu tablodaki TÜM ürünlerde aynı olan bir görseli buraya bir kere yükle — anında bu tablodaki {urunSayisi} ürünün hepsinin galerisine (ana görseli değiştirmeden, ek fotoğraf olarak) eklenir. Bundan sonra tabloya eklediğin her yeni ürüne de otomatik uygulanır.
+      </p>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input ref={dosyaInputRef} type="file" accept="image/*" onChange={e => setDosya(e.target.files?.[0] || null)} style={{ fontSize: 12 }} />
+        <input className="form-input" value={ad} onChange={e => setAd(e.target.value)} placeholder="Etiket (ör. Beden Tablosu, Kumaş Detay)" style={{ flex: 1, minWidth: 180 }} />
+        <button className="btn btn-primary" onClick={handleEkle} disabled={ekleniyor}>
+          <i className="ti ti-upload" />{ekleniyor ? 'Ekleniyor...' : 'Ekle ve Tüm Ürünlere Uygula'}
+        </button>
+      </div>
+
+      {gorseller.length > 0 && (
+        <>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            {gorseller.map(g => (
+              <div key={g._id} style={{ position: 'relative', width: 72 }}>
+                <img src={g.url} alt={g.ad || 'Ortak görsel'} style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+                <button className="btn-icon" title="Kaldır" onClick={() => handleSil(g._id)}
+                  style={{ position: 'absolute', top: -6, right: -6, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: '50%', width: 20, height: 20, lineHeight: 1 }}>
+                  <i className="ti ti-x" style={{ color: 'var(--red)', fontSize: 11 }} />
+                </button>
+                <div style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'center', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.ad || '—'}</div>
+              </div>
+            ))}
+          </div>
+          <button
+            className="btn btn-secondary"
+            style={{ fontSize: 12, padding: '4px 10px' }}
+            onClick={handleYenidenUygula}
+            disabled={uygulaniyor}
+            title="Yukarıdaki tüm ortak görselleri, bu tablodaki TÜM ürünlere yeniden dener - bir ürün eklenirken görsel uygulaması hata verdiyse ya da sonradan ürün eklediysen kullan."
+          >
+            <i className="ti ti-refresh" />{uygulaniyor ? 'Uygulanıyor...' : 'Tüm Ürünlere Yeniden Uygula'}
+          </button>
+        </>
+      )}
+
+      {gorseller.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)' }}>Henüz ortak görsel eklenmedi.</div>}
     </div>
   );
 }

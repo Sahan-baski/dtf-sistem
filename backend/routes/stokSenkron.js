@@ -6,10 +6,13 @@
  */
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { StokHavuzu, HavuzBedenStok, HavuzUrun, MasterTasarim } = require('../models/stokSenkron');
 const motor = require('../services/stokMotoru');
 const woo = require('../services/wooHelpers');
 const { sadeceEkip } = require('../middleware/rol');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 // Ortak Stok Senkron dahili bir ekip aracı - müşteri panelinden hiç
 // kullanılmıyor, ve buradaki "test satışı" gibi işlemler gerçek WooCommerce
 // stoğunu değiştirebiliyor - ekip-only.
@@ -173,6 +176,43 @@ router.delete('/master-tasarimlar/:id', async (req, res) => {
 router.post('/master-tasarimlar/yeniden-senkronla', async (req, res) => {
   try { res.json(await motor.tumBaglantilariYenidenSenkronla()); }
   catch (e) { hataYaniti(res, e, 'Yeniden senkronlanamadı.'); }
+});
+
+// ----- Ortak Görseller (bir havuzdaki TÜM ürünlere birden uygulanan galeri görselleri) -----
+// Kullanım: beden tablosu ya da yakın çekim kumaş detayı gibi tüm aynı
+// tablodaki ürünlerde ortak olan bir görseli bir kere yükle - hem o anki tüm
+// ürünlere hemen uygulanır, hem de bundan sonra tabloya eklenecek her yeni
+// ürüne (urunuHavuzaEkle içinde) otomatik uygulanır. Ana ürün görselini
+// DEĞİŞTİRMEZ, galeriye ek fotoğraf olarak eklenir.
+
+router.get('/havuzlar/:id/gorseller', async (req, res) => {
+  try { res.json(await motor.havuzGorselleri(req.params.id)); }
+  catch (e) { hataYaniti(res, e); }
+});
+
+router.post('/havuzlar/:id/gorseller', upload.single('resim'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ hata: 'Görsel gerekli.' });
+    const ad = (req.body.ad || '').trim();
+
+    let yuklenen;
+    try { yuklenen = await woo.resimYukle(req.file.buffer, req.file.originalname, req.file.mimetype); }
+    catch (e) { return res.status(400).json({ hata: `Görsel yüklenemedi: ${woo.wpHataMetni ? woo.wpHataMetni(e) : e.message}` }); }
+
+    const sonuc = await motor.havuzGorselEkleVeUygula(req.params.id, { ad, wpMediaId: yuklenen.id, url: yuklenen.url });
+    res.status(201).json(sonuc);
+  } catch (e) { hataYaniti(res, e, 'Ortak görsel eklenemedi.'); }
+});
+
+router.delete('/havuzlar/:havuzId/gorseller/:gorselId', async (req, res) => {
+  try { await motor.havuzGorselSil(req.params.gorselId); res.json({ mesaj: 'Silindi' }); }
+  catch (e) { hataYaniti(res, e); }
+});
+
+// Telafi/tekrar-dene: havuzun kayıtlı tüm ortak görsellerini tüm ürünlere yeniden dener.
+router.post('/havuzlar/:id/gorseller/yeniden-uygula', async (req, res) => {
+  try { res.json(await motor.havuzGorselleriniYenidenUygula(req.params.id)); }
+  catch (e) { hataYaniti(res, e, 'Yeniden uygulanamadı.'); }
 });
 
 // ----- Test Satışı (gerçek bir sipariş olmadan simülasyon) -----

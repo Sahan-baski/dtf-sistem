@@ -70,6 +70,18 @@ const IslenmisSiparisSchema = new Schema({
   islenme_tarihi: { type: Date, default: Date.now },
 }, { timestamps: true });
 
+// Bir havuzdaki TÜM ürünlere ortak uygulanan görseller (ör. beden tablosu,
+// yakın çekim kumaş detayı) - WordPress medya kütüphanesine bir kere
+// yüklenir, burada referansı tutulur; havuzdaki her WC ürününün galerisine
+// (ana görseli değiştirmeden) ek fotoğraf olarak uygulanır - hem eklendiği
+// anda mevcut ürünlere, hem de bundan sonra havuza eklenecek yeni ürünlere.
+const HavuzGorselSchema = new Schema({
+  havuz_id: { type: Schema.Types.ObjectId, ref: 'StokHavuzu', required: true, index: true },
+  ad: { type: String, default: '' },
+  wp_media_id: { type: Number, required: true },
+  url: { type: String, required: true },
+}, { timestamps: true });
+
 module.exports = {
   SINIRSIZ_TASARIM_STOGU,
   StokHavuzu: mongoose.models.StokHavuzu || mongoose.model('StokHavuzu', StokHavuzuSchema),
@@ -77,4 +89,5 @@ module.exports = {
   MasterTasarim: mongoose.models.MasterTasarim || mongoose.model('MasterTasarim', MasterTasarimSchema),
   HavuzUrun: mongoose.models.HavuzUrun || mongoose.model('HavuzUrun', HavuzUrunSchema),
   IslenmisSiparis: mongoose.models.IslenmisSiparis || mongoose.model('IslenmisSiparis', IslenmisSiparisSchema),
+  HavuzGorsel: mongoose.models.HavuzGorsel || mongoose.model('HavuzGorsel', HavuzGorselSchema),
 };
