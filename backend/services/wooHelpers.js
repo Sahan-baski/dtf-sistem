@@ -106,6 +106,16 @@ async function tasarimEtiketiYaz(urunId, ad) {
   await client().put(`/products/${urunId}`, { sbc_tasarim: ad || '' });
 }
 
+/**
+ * Bir WooCommerce ürününün adını (başlığını) değiştirir - Stok Senkron
+ * panelinden, siteye gitmeden doğrudan düzenleyebilmek için. Buradaki
+ * diğer "en iyi çaba" senkronlardan farklı olarak hata yutulmuyor/loglanmıyor
+ * - asıl amaç bu olduğu için başarısız olursa kullanıcı bilmeli.
+ */
+async function urunAdiYaz(urunId, ad) {
+  await client().put(`/products/${urunId}`, { name: ad });
+}
+
 /** Bir görseli WordPress medya kütüphanesine yükler, WooCommerce'de kullanılacak medya ID'sini ve URL'sini döner. */
 async function resimYukle(buffer, dosyaAdi, mimeType) {
   const { data } = await wp.client().post('/media', buffer, {
@@ -147,6 +157,7 @@ module.exports = {
   degiskenUrunAra,
   duzenlemeLinki,
   tasarimEtiketiYaz,
+  urunAdiYaz,
   resimYukle,
   galeriGorselEkle,
   hataMetni,

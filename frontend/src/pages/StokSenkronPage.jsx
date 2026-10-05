@@ -199,6 +199,11 @@ function HavuzGorunumu({ havuzId, tablo, yukleniyor, onTabloDegisti, toast }) {
     catch (e) { goster(e.response?.data?.hata || 'Hata', true); }
   };
 
+  const handleUrunAdDegis = async (havuzUrunId, yeniAd) => {
+    try { const r = await stokSenkronApi.urunAdiDegistir(havuzUrunId, yeniAd); onTabloDegisti(r.data.tablo); goster('Kaydedildi - WooCommerce\'e yazıldı'); }
+    catch (e) { goster(e.response?.data?.hata || 'İsim değiştirilemedi', true); }
+  };
+
   return (
     <div>
       {mesaj && <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--indigo)' }}>{mesaj}</div>}
@@ -256,10 +261,23 @@ function HavuzGorunumu({ havuzId, tablo, yukleniyor, onTabloDegisti, toast }) {
 
             {tablo.urunler.map(u => (
               <tr key={u.id}>
-                <Td>
-                  {u.duzenleme_linki
-                    ? <a href={u.duzenleme_linki} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>{u.ad}</a>
-                    : u.ad}
+                <Td style={{ minWidth: 200 }}>
+                  <input
+                    className="form-input"
+                    defaultValue={u.ad}
+                    style={{ padding: '4px 6px', fontSize: 13, marginBottom: 3, width: '100%' }}
+                    onBlur={e => { const v = e.target.value.trim(); if (v && v !== u.ad) handleUrunAdDegis(u.id, v); else if (!v) e.target.value = u.ad; }}
+                    onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                    title="Ürün adını değiştirip kutudan çıkınca (Enter/Tab) WooCommerce'e kaydedilir."
+                  />
+                  {u.duzenleme_linki && (
+                    <a href={u.duzenleme_linki} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--blue)' }}>WooCommerce'de aç ↗</a>
+                  )}
+                  {u.diger_tablolar?.length > 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 3 }} title="Aynı ürün iki tabloda birden stok yönetimine girerse, ikisi de bağımsız sayı yazdığı için stok hesabı bozulur - birinden kaldır.">
+                      ⚠️ Ayrıca "{u.diger_tablolar.join(', ')}" tablosunda da var
+                    </div>
+                  )}
                   <br />
                   <button className="btn-icon" style={{ fontSize: 11, color: 'var(--indigo)', padding: '2px 6px 2px 0' }} onClick={() => setTestSatisUrunu(u)} title="Gerçek bir sipariş gelmiş gibi stoktan düşürür - stok senkronun doğru çalıştığını denemek için">🧪 Test Satışı</button>
                   <button className="btn-icon" style={{ fontSize: 11, color: 'var(--red)', padding: '2px 0' }} onClick={() => handleUrunCikar(u.id)}>Tablodan kaldır</button>
@@ -423,8 +441,11 @@ function UrunEklePaneli({ havuzId, onEklendi, toast }) {
       const r = await stokSenkronApi.urunEkle(havuzId, seciliIdler);
       onEklendi(r.data.tablo);
       let m = `${r.data.eklenen} ürün eklendi.`;
-      if (r.data.hatalar?.length) m += ` (${r.data.hatalar.length} ürün eklenemedi)`;
-      toast(m);
+      if (r.data.hatalar?.length) {
+        m += ` ${r.data.hatalar.length} ürün eklenemedi: ` + r.data.hatalar.slice(0, 3).map(h => h.hata).join(' | ');
+        if (r.data.hatalar.length > 3) m += ' ...';
+      }
+      toast(m, r.data.eklenen > 0 ? undefined : (r.data.hatalar?.length ? 'error' : undefined));
       setSeciliIdler([]); setArama(''); setSonuclar([]);
     } catch (e) { toast(e.response?.data?.hata || 'Hata', 'error'); }
     finally { setEkleniyor(false); }

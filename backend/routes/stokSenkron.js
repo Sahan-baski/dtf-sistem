@@ -108,7 +108,17 @@ router.post('/havuzlar/:id/urun-ekle', async (req, res) => {
     let eklenen = 0;
     const hatalar = [];
     for (const id of idler) {
-      try { await motor.urunuHavuzaEkle(req.params.id, id); eklenen++; }
+      try {
+        // Aynı WC ürününün iki ayrı tabloda birden stok yönetimine girmesini
+        // engelle - ikisi de bağımsız/çakışan sayılar yazarsa stok bozulur.
+        const baskaTabloda = await motor.baskaHavuzdaMi(id, req.params.id);
+        if (baskaTabloda) {
+          hatalar.push({ id, hata: `Bu ürün zaten "${baskaTabloda.etiket}" tablosunda - aynı ürün iki tabloya birden eklenemez (stok hesabı bozulur).` });
+          continue;
+        }
+        await motor.urunuHavuzaEkle(req.params.id, id);
+        eklenen++;
+      }
       catch (e) { hatalar.push({ id, hata: woo.hataMetni(e) }); }
     }
     res.json({ eklenen, hatalar, tablo: await motor.tabloVerisi(req.params.id, { besle: false }) });
@@ -120,6 +130,18 @@ router.delete('/havuzlar/:havuzId/urunler/:havuzUrunId', async (req, res) => {
     await motor.urunuHavuzdanCikar(req.params.havuzUrunId);
     res.json({ tablo: await motor.tabloVerisi(req.params.havuzId, { besle: false }) });
   } catch (e) { hataYaniti(res, e); }
+});
+
+// Ürünün WooCommerce'teki adını Stok Senkron panelinden, siteye gitmeden değiştir.
+router.put('/urunler/:havuzUrunId/ad', async (req, res) => {
+  try {
+    const ad = (req.body.ad || '').trim();
+    if (!ad) return res.status(400).json({ hata: 'Ürün adı boş olamaz.' });
+    const havuzUrun = await HavuzUrun.findById(req.params.havuzUrunId);
+    if (!havuzUrun) return res.status(404).json({ hata: 'Ürün bulunamadı.' });
+    await motor.urunAdiDegistir(req.params.havuzUrunId, ad);
+    res.json({ tablo: await motor.tabloVerisi(havuzUrun.havuz_id, { besle: false }) });
+  } catch (e) { hataYaniti(res, e, 'İsim değiştirilemedi.'); }
 });
 
 // ----- Bir ürünü bir DTF kağıt/tasarım kaydına bağlama -----

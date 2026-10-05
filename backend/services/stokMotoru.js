@@ -294,6 +294,31 @@ async function havuzGorselleriniYenidenUygula(havuzId) {
   return { toplam_urun: urunler.length, toplam_gorsel: gorseller.length, basarili, hatalar };
 }
 
+/**
+ * Bir ürünün WooCommerce'teki adını değiştirir ve yerel önbelleği (wc_urun_adi)
+ * günceller - Stok Senkron panelinden, WooCommerce'e gitmeden. WooCommerce'e
+ * yazma başarısız olursa fırlatır (bu, "en iyi çaba" bir senkron değil -
+ * asıl istenen şey siteye yansımasıdır, başarısız olduğunu kullanıcı bilmeli).
+ */
+async function urunAdiDegistir(havuzUrunId, ad) {
+  const havuzUrun = await HavuzUrun.findById(havuzUrunId);
+  if (!havuzUrun) throw new Error('Ürün bulunamadı.');
+  await woo.urunAdiYaz(havuzUrun.wc_urun_id, ad);
+  await HavuzUrun.findByIdAndUpdate(havuzUrunId, { wc_urun_adi: ad });
+}
+
+/**
+ * Bir WC ürününün (haricHavuzId DIŞINDA) başka bir tabloda kayıtlı olup
+ * olmadığını döner - aynı ürünün iki havuzda birden stok yönetimine girmesi,
+ * ikisinin de bağımsız/çakışan sayılar WooCommerce'e yazmasına yol açar.
+ */
+async function baskaHavuzdaMi(wcUrunId, haricHavuzId) {
+  const mevcut = await HavuzUrun.findOne({ wc_urun_id: wcUrunId, havuz_id: { $ne: haricHavuzId } });
+  if (!mevcut) return null;
+  const havuz = await StokHavuzu.findById(mevcut.havuz_id);
+  return { id: mevcut.havuz_id, etiket: havuz ? havuz.etiket : '(silinmiş tablo)' };
+}
+
 /** Bir WooCommerce ürününü (değişken tip) havuza ekler / bedenlerini yeniden tespit eder. */
 async function urunuHavuzaEkle(havuzId, wcUrunId) {
   const bedenler = await havuzBedenleri(havuzId);
@@ -411,6 +436,27 @@ async function tabloVerisi(havuzId, { besle = true } = {}) {
   );
   const bagsizTasarimlar = masterTasarimlar.filter(m => !bagliMasterIdlerBuTabloda.has(String(m._id)));
 
+  // Bu tablodaki ürünlerden AYNI WC ürününün başka bir tabloda da kayıtlı
+  // olup olmadığını tespit et - aynı ürünün iki havuzda birden stok yönetimine
+  // girmesi, ikisinin de bağımsız/çakışan sayılar yazmasına (stok hesabının
+  // bozulmasına) yol açar. Normalde "urun-ekle" bunu zaten engeller, bu
+  // sadece ENGEL EKLENMEDEN ÖNCE oluşmuş eski çakışmaları da yakalamak için.
+  const tumWcIdler = havuzUrunleri.map(u => u.wc_urun_id);
+  const coklulukHaritasi = new Map(); // wc_urun_id -> [havuz etiketi, ...]
+  if (tumWcIdler.length) {
+    const digerHavuzlardakiAynilar = await HavuzUrun.find({ wc_urun_id: { $in: tumWcIdler }, havuz_id: { $ne: havuzId } });
+    if (digerHavuzlardakiAynilar.length) {
+      const digerHavuzIdler = [...new Set(digerHavuzlardakiAynilar.map(u => String(u.havuz_id)))];
+      const digerHavuzlar = await StokHavuzu.find({ _id: { $in: digerHavuzIdler } });
+      const etiketHaritasi = new Map(digerHavuzlar.map(h => [String(h._id), h.etiket]));
+      for (const u of digerHavuzlardakiAynilar) {
+        const liste = coklulukHaritasi.get(u.wc_urun_id) || [];
+        liste.push(etiketHaritasi.get(String(u.havuz_id)) || '(silinmiş tablo)');
+        coklulukHaritasi.set(u.wc_urun_id, liste);
+      }
+    }
+  }
+
   const urunler = [];
   for (const u of havuzUrunleri) {
     const ts = await tasarimStogu(u);
@@ -430,6 +476,7 @@ async function tabloVerisi(havuzId, { besle = true } = {}) {
       master_tasarim_id: u.master_tasarim_id || null,
       hucreler,
       toplam,
+      diger_tablolar: coklulukHaritasi.get(u.wc_urun_id) || [],
     });
   }
 
@@ -496,6 +543,8 @@ module.exports = {
   tumBaglantilariYenidenSenkronla,
   urunuHavuzaEkle,
   urunuHavuzdanCikar,
+  urunAdiDegistir,
+  baskaHavuzdaMi,
   havuzGorselleri,
   havuzGorselEkleVeUygula,
   havuzGorselSil,

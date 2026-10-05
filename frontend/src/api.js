@@ -80,6 +80,7 @@ export const stokSenkronApi = {
   wcUrunAra: (ara) => api.get('/stok-senkron/wc-urunler', { params:{ ara } }),
   urunEkle: (havuzId,wcUrunIdler) => api.post(`/stok-senkron/havuzlar/${havuzId}/urun-ekle`, { wc_urun_idler:wcUrunIdler }),
   urunCikar: (havuzId,havuzUrunId) => api.delete(`/stok-senkron/havuzlar/${havuzId}/urunler/${havuzUrunId}`),
+  urunAdiDegistir: (havuzUrunId,ad) => api.put(`/stok-senkron/urunler/${havuzUrunId}/ad`, { ad }),
   tasarimBagla: (havuzUrunId,masterTasarimId) => api.post(`/stok-senkron/urunler/${havuzUrunId}/tasarim-baglantisi`, { master_tasarim_id:masterTasarimId||null }),
   testSatisi: (havuzUrunId,beden,adet) => api.post(`/stok-senkron/urunler/${havuzUrunId}/test-satisi`, { beden, adet }),
   masterTasarimlar: () => api.get('/stok-senkron/master-tasarimlar'),
