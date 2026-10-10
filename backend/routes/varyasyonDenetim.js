@@ -36,4 +36,18 @@ router.post('/duzelt', async (req, res) => {
   } catch (e) { hataYaniti(res, e, 'Düzeltilemedi.'); }
 });
 
+// Tüm sorunlu varyasyonları tek seferde düzeltir ("Tümünü Düzelt") - frontend
+// zaten taramadan sahip olduğu listeyi gönderiyor, burada tekrar taramaya
+// gerek yok.
+router.post('/duzelt-hepsi', async (req, res) => {
+  try {
+    const ogeler = Array.isArray(req.body.ogeler)
+      ? req.body.ogeler.map(o => ({ urun_id: Number(o.urun_id), varyasyon_id: Number(o.varyasyon_id) })).filter(o => o.urun_id && o.varyasyon_id)
+      : [];
+    if (!ogeler.length) return res.status(400).json({ hata: 'Düzeltilecek öğe yok.' });
+    const sonuc = await denetim.coguluDuzelt(ogeler);
+    res.json(sonuc);
+  } catch (e) { hataYaniti(res, e, 'Toplu düzeltme başarısız oldu.'); }
+});
+
 module.exports = router;

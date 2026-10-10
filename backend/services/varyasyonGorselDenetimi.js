@@ -98,7 +98,28 @@ async function varyasyonGorseliniKaldir(urunId, varyasyonId) {
   await client().put(`/products/${urunId}/variations/${varyasyonId}`, { image: null });
 }
 
+/**
+ * "Tümünü Düzelt" - katalogda çok sayıda ürün/kombinasyon olduğunda tek tek
+ * tıklamak yerine, taramanın bulduğu TÜM sorunlu varyasyonları sırayla
+ * düzeltir. Biri başarısız olursa diğerlerini durdurmaz, hepsini dener ve
+ * hangilerinin başarısız olduğunu hatalar[] içinde döner.
+ */
+async function coguluDuzelt(ogeler) {
+  let basarili = 0;
+  const hatalar = [];
+  for (const oge of ogeler) {
+    try {
+      await varyasyonGorseliniKaldir(oge.urun_id, oge.varyasyon_id);
+      basarili++;
+    } catch (e) {
+      hatalar.push({ urun_id: oge.urun_id, varyasyon_id: oge.varyasyon_id, hata: e.response?.data?.message || e.message });
+    }
+  }
+  return { toplam: ogeler.length, basarili, hatalar };
+}
+
 module.exports = {
   taraYanlisVaryasyonGorselleri,
   varyasyonGorseliniKaldir,
+  coguluDuzelt,
 };

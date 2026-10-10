@@ -101,6 +101,7 @@ export const stokSenkronApi = {
 export const varyasyonDenetimApi = {
   tara: () => api.get('/varyasyon-denetim/tara'),
   duzelt: (urunId, varyasyonId) => api.post('/varyasyon-denetim/duzelt', { urun_id: urunId, varyasyon_id: varyasyonId }),
+  duzeltHepsi: (ogeler) => api.post('/varyasyon-denetim/duzelt-hepsi', { ogeler }),
 };
 
 export const fiyatApi = {

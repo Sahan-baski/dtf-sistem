@@ -595,6 +595,7 @@ function VaryasyonGorselDenetimiPaneli({ toast }) {
   const [tarandi, setTarandi] = useState(false);
   const [sorunlu, setSorunlu] = useState([]);
   const [duzeltilenler, setDuzeltilenler] = useState({}); // { "urunId-varyasyonId": true/'yapiliyor' }
+  const [hepsiDuzeltiliyor, setHepsiDuzeltiliyor] = useState(false);
 
   const handleTara = async () => {
     setTaraniyor(true);
@@ -627,6 +628,47 @@ function VaryasyonGorselDenetimiPaneli({ toast }) {
 
   const kalanSorunlu = sorunlu.filter(s => duzeltilenler[`${s.urun_id}-${s.varyasyon_id}`] !== true);
 
+  const handleTumunuDuzelt = async () => {
+    if (!kalanSorunlu.length) return;
+    if (!confirm(`${kalanSorunlu.length} varyasyonun yanlış görseli tek seferde kaldırılacak. Devam edilsin mi?`)) return;
+    setHepsiDuzeltiliyor(true);
+    // Hepsini "yapılıyor" işaretle - tek tek buton yerine toplu ilerlemeyi göster.
+    setDuzeltilenler(d => {
+      const k = { ...d };
+      kalanSorunlu.forEach(s => { k[`${s.urun_id}-${s.varyasyon_id}`] = 'yapiliyor'; });
+      return k;
+    });
+    try {
+      const ogeler = kalanSorunlu.map(s => ({ urun_id: s.urun_id, varyasyon_id: s.varyasyon_id }));
+      const r = await varyasyonDenetimApi.duzeltHepsi(ogeler);
+      const basarisizAnahtarlar = new Set((r.data.hatalar || []).map(h => `${h.urun_id}-${h.varyasyon_id}`));
+      setDuzeltilenler(d => {
+        const k = { ...d };
+        ogeler.forEach(o => {
+          const anahtar = `${o.urun_id}-${o.varyasyon_id}`;
+          if (basarisizAnahtarlar.has(anahtar)) delete k[anahtar]; // tekrar listede görünsün
+          else k[anahtar] = true;
+        });
+        return k;
+      });
+      if (r.data.hatalar?.length) {
+        console.error('[VaryasyonDenetim] Toplu düzeltmede bazı hatalar:', r.data.hatalar);
+        toast(`${r.data.basarili}/${r.data.toplam} düzeltildi - ${r.data.hatalar.length} tanesi başarısız oldu (konsola bak)`, 'error');
+      } else {
+        toast(`${r.data.basarili} varyasyon düzeltildi ✓`);
+      }
+    } catch (e) {
+      console.error('[VaryasyonDenetim] Toplu düzeltme hatası:', e);
+      toast(e.response?.data?.hata || 'Toplu düzeltme başarısız oldu', 'error');
+      // Başarısız olursa hepsini geri "sorunlu" durumuna al.
+      setDuzeltilenler(d => {
+        const k = { ...d };
+        kalanSorunlu.forEach(s => { delete k[`${s.urun_id}-${s.varyasyon_id}`]; });
+        return k;
+      });
+    } finally { setHepsiDuzeltiliyor(false); }
+  };
+
   return (
     <div className="card" style={{ padding: 16, marginBottom: 18 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setAcik(a => !a)}>
@@ -640,9 +682,16 @@ function VaryasyonGorselDenetimiPaneli({ toast }) {
             Bazı ürünlerde bir bedenin (varyasyonun) görseli yanlışlıkla BAŞKA bir ürünün fotoğrafı olarak kalmış - müşteri bedeni seçtiği an (sepete eklemeden hemen önce) gördüğü fotoğraf aniden değişiyor, şikayetin sebebi bu. Aşağıdaki tarama tüm katalogu kontrol eder, bu şekilde "yabancı" kalmış varyasyon görsellerini bulur; "Düzelt" dediğinde sadece o yanlış görseli kaldırır (ürünün kendi fotoğraflarına hiç dokunmaz) ve WooCommerce otomatik olarak doğru görseli göstermeye devam eder.
           </p>
 
-          <button className="btn btn-primary" onClick={handleTara} disabled={taraniyor} style={{ marginBottom: 14 }}>
-            <i className={`ti ${taraniyor ? 'ti-loader-2' : 'ti-search'}`} />{taraniyor ? 'Taranıyor... (katalog büyükse birkaç dakika sürebilir)' : 'Taramayı Başlat'}
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+            <button className="btn btn-primary" onClick={handleTara} disabled={taraniyor || hepsiDuzeltiliyor}>
+              <i className={`ti ${taraniyor ? 'ti-loader-2' : 'ti-search'}`} />{taraniyor ? 'Taranıyor... (katalog büyükse birkaç dakika sürebilir)' : 'Taramayı Başlat'}
+            </button>
+            {kalanSorunlu.length > 1 && (
+              <button className="btn btn-secondary" onClick={handleTumunuDuzelt} disabled={hepsiDuzeltiliyor || taraniyor}>
+                <i className={`ti ${hepsiDuzeltiliyor ? 'ti-loader-2' : 'ti-checks'}`} />{hepsiDuzeltiliyor ? 'Hepsi düzeltiliyor...' : `Tümünü Düzelt (${kalanSorunlu.length})`}
+              </button>
+            )}
+          </div>
 
           {tarandi && kalanSorunlu.length === 0 && (
             <div style={{ fontSize: 13, color: 'var(--green, #22c55e)' }}>✓ Sorunlu varyasyon görseli yok.</div>
@@ -665,7 +714,7 @@ function VaryasyonGorselDenetimiPaneli({ toast }) {
                       <div style={{ fontSize: 12, color: 'var(--text3)' }}>Beden: {item.beden}</div>
                       {item.urun_duzenleme_linki && <a href={item.urun_duzenleme_linki} target="_blank" rel="noreferrer" style={{ fontSize: 11 }}>WooCommerce'de aç ↗</a>}
                     </div>
-                    <button className="btn btn-secondary" disabled={durum === 'yapiliyor'} onClick={() => handleDuzelt(item)}>
+                    <button className="btn btn-secondary" disabled={durum === 'yapiliyor' || hepsiDuzeltiliyor} onClick={() => handleDuzelt(item)}>
                       <i className={`ti ${durum === 'yapiliyor' ? 'ti-loader-2' : 'ti-tool'}`} />{durum === 'yapiliyor' ? 'Düzeltiliyor...' : 'Düzelt (Yanlış Görseli Kaldır)'}
                     </button>
                   </div>
