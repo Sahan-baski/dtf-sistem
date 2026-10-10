@@ -34,6 +34,7 @@ app.use('/api/ayarlar',       authMiddleware, require('./routes/ayarlar'));
 app.use('/api/kategoriler',   authMiddleware, require('./routes/kategoriler'));
 app.use('/api/istatistikler', authMiddleware, require('./routes/istatistikler'));
 app.use('/api/yedek',         authMiddleware, require('./routes/yedek'));
+app.use('/api/varyasyon-denetim', authMiddleware, require('./routes/varyasyonDenetim'));
 
 app.get('/api/ping', (req,res) => res.json({durum:'aktif'}));
 app.use(express.static(path.join(__dirname,'./public')));

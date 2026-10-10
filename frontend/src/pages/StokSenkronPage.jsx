@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { stokSenkronApi } from '../api';
+import { stokSenkronApi, varyasyonDenetimApi } from '../api';
 import { useToast } from '../context/ToastContext';
 
 const SINIRSIZ = 99999;
@@ -78,6 +78,8 @@ export default function StokSenkronPage() {
         </div>
         <button className="btn btn-primary" onClick={() => setYeniHavuzAcik(true)}><i className="ti ti-plus" />Yeni Tablo Ekle</button>
       </div>
+
+      <VaryasyonGorselDenetimiPaneli toast={toast} />
 
       {havuzlar.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -576,6 +578,107 @@ function TasarimStoklariPaneli({ havuzId, masterTasarimlar, onDegisti, goster })
  * ürüne otomatik uygulanır - ana ürün görselini DEĞİŞTİRMEZ, galeriye ek
  * fotoğraf olarak eklenir.
  */
+/**
+ * "Ürünü sepete eklerken görseli değişiyor" şikayeti üzerine eklendi.
+ * Kök neden: WooCommerce'de bir ürünün varyasyonlarından (bedenlerinden)
+ * birine, YANLIŞLIKLA başka bir ürüne ait bir görsel atanmış olabiliyor -
+ * müşteri o bedeni seçtiği an (sepete eklemeden hemen önce, çünkü "Sepete
+ * Ekle" bir beden seçilmeden tıklanamıyor) ekrandaki fotoğraf o yanlış
+ * görsele aniden değişiyor. Bu panel TÜM katalogu tarar, ürünün kendi
+ * galerisinde olmayan (yani başka bir üründen sızmış) her varyasyon
+ * görselini bulur ve tek tıkla kaldırmanı sağlar - kaldırınca WooCommerce
+ * otomatik olarak o varyasyon için ürünün kendi ana görselini gösterir.
+ */
+function VaryasyonGorselDenetimiPaneli({ toast }) {
+  const [acik, setAcik] = useState(false);
+  const [taraniyor, setTaraniyor] = useState(false);
+  const [tarandi, setTarandi] = useState(false);
+  const [sorunlu, setSorunlu] = useState([]);
+  const [duzeltilenler, setDuzeltilenler] = useState({}); // { "urunId-varyasyonId": true/'yapiliyor' }
+
+  const handleTara = async () => {
+    setTaraniyor(true);
+    setTarandi(false);
+    try {
+      const r = await varyasyonDenetimApi.tara();
+      setSorunlu(r.data.sorunlu || []);
+      setTarandi(true);
+      setDuzeltilenler({});
+      if (!r.data.sorunlu?.length) toast('Tarama tamamlandı - sorunlu varyasyon görseli bulunamadı ✓');
+      else toast(`Tarama tamamlandı - ${r.data.sorunlu.length} sorunlu varyasyon görseli bulundu`, 'error');
+    } catch (e) {
+      console.error('[VaryasyonDenetim] Tarama hatası:', e);
+      toast(e.response?.data?.hata || 'Tarama başarısız oldu', 'error');
+    } finally { setTaraniyor(false); }
+  };
+
+  const handleDuzelt = async (item) => {
+    const anahtar = `${item.urun_id}-${item.varyasyon_id}`;
+    setDuzeltilenler(d => ({ ...d, [anahtar]: 'yapiliyor' }));
+    try {
+      await varyasyonDenetimApi.duzelt(item.urun_id, item.varyasyon_id);
+      setDuzeltilenler(d => ({ ...d, [anahtar]: true }));
+    } catch (e) {
+      console.error('[VaryasyonDenetim] Düzeltme hatası:', e);
+      toast(e.response?.data?.hata || 'Düzeltilemedi', 'error');
+      setDuzeltilenler(d => { const k = { ...d }; delete k[anahtar]; return k; });
+    }
+  };
+
+  const kalanSorunlu = sorunlu.filter(s => duzeltilenler[`${s.urun_id}-${s.varyasyon_id}`] !== true);
+
+  return (
+    <div className="card" style={{ padding: 16, marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setAcik(a => !a)}>
+        <strong>🩺 Varyasyon Görsel Denetimi <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 12 }}>("sepete eklerken görsel değişiyor" şikayeti için)</span></strong>
+        <i className={`ti ${acik ? 'ti-chevron-up' : 'ti-chevron-down'}`} />
+      </div>
+
+      {acik && (
+        <>
+          <p style={{ fontSize: 12, color: 'var(--text3)', margin: '10px 0' }}>
+            Bazı ürünlerde bir bedenin (varyasyonun) görseli yanlışlıkla BAŞKA bir ürünün fotoğrafı olarak kalmış - müşteri bedeni seçtiği an (sepete eklemeden hemen önce) gördüğü fotoğraf aniden değişiyor, şikayetin sebebi bu. Aşağıdaki tarama tüm katalogu kontrol eder, bu şekilde "yabancı" kalmış varyasyon görsellerini bulur; "Düzelt" dediğinde sadece o yanlış görseli kaldırır (ürünün kendi fotoğraflarına hiç dokunmaz) ve WooCommerce otomatik olarak doğru görseli göstermeye devam eder.
+          </p>
+
+          <button className="btn btn-primary" onClick={handleTara} disabled={taraniyor} style={{ marginBottom: 14 }}>
+            <i className={`ti ${taraniyor ? 'ti-loader-2' : 'ti-search'}`} />{taraniyor ? 'Taranıyor... (katalog büyükse birkaç dakika sürebilir)' : 'Taramayı Başlat'}
+          </button>
+
+          {tarandi && kalanSorunlu.length === 0 && (
+            <div style={{ fontSize: 13, color: 'var(--green, #22c55e)' }}>✓ Sorunlu varyasyon görseli yok.</div>
+          )}
+
+          {kalanSorunlu.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {kalanSorunlu.map(item => {
+                const anahtar = `${item.urun_id}-${item.varyasyon_id}`;
+                const durum = duzeltilenler[anahtar];
+                return (
+                  <div key={anahtar} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {item.urun_ana_gorsel && <img src={item.urun_ana_gorsel} alt="Doğru görsel" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, border: '2px solid var(--green, #22c55e)' }} title="Ürünün kendi (doğru) görseli" />}
+                      <i className="ti ti-arrow-right" style={{ color: 'var(--text3)' }} />
+                      {item.yanlis_gorsel && <img src={item.yanlis_gorsel} alt="Yanlış görsel" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, border: '2px solid var(--red)' }} title="Beden seçilince görünen YANLIŞ görsel" />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{item.urun_adi}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text3)' }}>Beden: {item.beden}</div>
+                      {item.urun_duzenleme_linki && <a href={item.urun_duzenleme_linki} target="_blank" rel="noreferrer" style={{ fontSize: 11 }}>WooCommerce'de aç ↗</a>}
+                    </div>
+                    <button className="btn btn-secondary" disabled={durum === 'yapiliyor'} onClick={() => handleDuzelt(item)}>
+                      <i className={`ti ${durum === 'yapiliyor' ? 'ti-loader-2' : 'ti-tool'}`} />{durum === 'yapiliyor' ? 'Düzeltiliyor...' : 'Düzelt (Yanlış Görseli Kaldır)'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function OrtakGorsellerPaneli({ havuzId, urunSayisi, goster }) {
   const [gorseller, setGorseller] = useState([]);
   const [ad, setAd] = useState('');

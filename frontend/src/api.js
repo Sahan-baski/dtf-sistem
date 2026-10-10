@@ -98,6 +98,11 @@ export const stokSenkronApi = {
   havuzGorselleriniYenidenUygula: (havuzId) => api.post(`/stok-senkron/havuzlar/${havuzId}/gorseller/yeniden-uygula`),
 };
 
+export const varyasyonDenetimApi = {
+  tara: () => api.get('/varyasyon-denetim/tara'),
+  duzelt: (urunId, varyasyonId) => api.post('/varyasyon-denetim/duzelt', { urun_id: urunId, varyasyon_id: varyasyonId }),
+};
+
 export const fiyatApi = {
   urunler: (params) => api.get('/fiyat-guncelle/urunler', { params }),
   kategoriler: () => api.get('/fiyat-guncelle/kategoriler'),
