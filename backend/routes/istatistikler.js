@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Siparis } = require('../models');
 const woo = require('../services/wooSiparis');
+const wooIstatistik = require('../services/wooIstatistik');
 const { sadeceEkip } = require('../middleware/rol');
 // İş istatistikleri (ciro, sipariş sayıları vb.) müşteri hesaplarına
 // gösterilmemeli - ekip-only.
@@ -18,6 +19,18 @@ router.get('/tasarim-satis', async (req, res) => {
     res.status(400).json({ hata: (woo.hataMetni ? woo.hataMetni(e) : null) || e.message || 'WooCommerce satış verisi alınamadı.' });
   }
 });
+// Site (mirasgiyim.com / mirascocuk.com) satış istatistikleri - WooCommerce'teki
+// gerçek siparişlerden canlı. 5 dk önbellekli; ?yenile=1 önbelleği atlar.
+router.get('/site', async (req, res) => {
+  try {
+    const { aralik, baslangic, bitis, yenile } = req.query;
+    res.json(await wooIstatistik.siteIstatistikleri({ aralik, baslangic, bitis, yenile: yenile === '1' }));
+  } catch (e) {
+    console.error('[İstatistikler] Site istatistik hatası:', e.message);
+    res.status(400).json({ hata: (wooIstatistik.hataMetni ? wooIstatistik.hataMetni(e) : null) || e.message || 'Site satış verisi alınamadı.' });
+  }
+});
+
 router.get('/', async (req,res) => {
   try {
     const siparisler = await Siparis.find().sort({createdAt:1});

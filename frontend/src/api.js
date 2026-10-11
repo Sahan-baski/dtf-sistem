@@ -68,6 +68,8 @@ export const istatistikApi = {
   // WooCommerce'in kendi sipariş geçmişinden hangi üründen ("tasarım") ne
   // kadar satılmış - yerel Siparis koleksiyonundan bağımsız, canlı çeker.
   tasarimSatis: (baslangic, bitis) => api.get('/istatistikler/tasarim-satis', { params: { baslangic, bitis } }),
+  // Site (mirasgiyim.com / mirascocuk.com) satışları - WooCommerce siparişlerinden canlı.
+  site: (aralik, yenile) => api.get('/istatistikler/site', { params: { aralik, yenile: yenile ? '1' : undefined } }),
 };
 
 export const stokSenkronApi = {

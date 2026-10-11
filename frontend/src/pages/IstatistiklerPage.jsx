@@ -31,108 +31,351 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-const TARIH_ARALIKLARI = [
-  { key: 'tumu', ad: 'Tüm Zamanlar' },
-  { key: 'yil', ad: 'Bu Yıl' },
-  { key: '3ay', ad: 'Son 3 Ay' },
+// ===================== Site (WooCommerce) satış istatistikleri =====================
+
+const ACCENT = '#4f7ef8';
+
+const SITE_ARALIKLARI = [
+  { key: 'bugun', ad: 'Bugün' },
+  { key: '7gun', ad: 'Son 7 Gün' },
+  { key: 'buay', ad: 'Bu Ay' },
   { key: '30gun', ad: 'Son 30 Gün' },
+  { key: '3ay', ad: 'Son 3 Ay' },
+  { key: 'yil', ad: 'Bu Yıl' },
+  { key: 'tumu', ad: 'Tüm Zamanlar' },
 ];
 
-function aralikTarihleri(key) {
-  if (key === 'tumu') return {};
-  const bugun = new Date();
-  const bas = new Date(bugun);
-  if (key === 'yil') { bas.setMonth(0, 1); }
-  else if (key === '3ay') { bas.setMonth(bas.getMonth() - 3); }
-  else if (key === '30gun') { bas.setDate(bas.getDate() - 30); }
-  return { baslangic: bas.toISOString().split('T')[0], bitis: bugun.toISOString().split('T')[0] };
+const GUN_KISA = { Pazartesi: 'Pzt', Salı: 'Sal', Çarşamba: 'Çar', Perşembe: 'Per', Cuma: 'Cum', Cumartesi: 'Cmt', Pazar: 'Paz' };
+
+const tl = (n) => `${Math.round(n || 0).toLocaleString('tr-TR')}₺`;
+const sayi = (n) => (n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+
+function Degisim({ deger }) {
+  if (deger === null || deger === undefined) return null;
+  const artis = deger >= 0;
+  return (
+    <span style={{ fontSize: 11, color: artis ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+      {artis ? '▲' : '▼'} %{Math.abs(deger).toLocaleString('tr-TR')} <span style={{ color: 'var(--text3)', fontWeight: 400 }}>önceki döneme göre</span>
+    </span>
+  );
 }
 
-function TasarimSatislariKarti() {
-  const [veri, setVeri] = useState(null);
-  const [yukleniyor, setYukleniyor] = useState(true);
-  const [hata, setHata] = useState('');
-  const [aralik, setAralik] = useState('tumu');
-  const [metrik, setMetrik] = useState('adet'); // 'adet' | 'gelir'
-
-  useEffect(() => {
-    setYukleniyor(true);
-    setHata('');
-    const { baslangic, bitis } = aralikTarihleri(aralik);
-    istatistikApi.tasarimSatis(baslangic, bitis)
-      .then(r => setVeri(r.data))
-      .catch(e => setHata(e.response?.data?.hata || 'WooCommerce satış verisi alınamadı'))
-      .finally(() => setYukleniyor(false));
-  }, [aralik]);
-
-  const liste = (veri?.tasarimlar || []).slice(0, 15);
-  const enYuksek = liste.length ? Math.max(...liste.map(t => metrik === 'adet' ? t.adet : t.gelir)) : 0;
-
+function HizliKart({ baslik, veri, alt }) {
   return (
-    <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-          <i className="ti ti-shirt" style={{ color: 'var(--accent)', marginRight: 8 }} />
-          Tasarıma Göre Satışlar <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>(WooCommerce sipariş geçmişinden)</span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <select className="form-input" style={{ padding: '4px 8px', fontSize: 12, width: 'auto' }} value={aralik} onChange={e => setAralik(e.target.value)}>
-            {TARIH_ARALIKLARI.map(a => <option key={a.key} value={a.key}>{a.ad}</option>)}
-          </select>
-          <select className="form-input" style={{ padding: '4px 8px', fontSize: 12, width: 'auto' }} value={metrik} onChange={e => setMetrik(e.target.value)}>
-            <option value="adet">Adete Göre Sırala</option>
-            <option value="gelir">Ciroya Göre Sırala</option>
-          </select>
-        </div>
-      </div>
-
-      {yukleniyor && <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>WooCommerce'ten sipariş geçmişi taranıyor...</div>}
-      {!yukleniyor && hata && <div style={{ textAlign: 'center', color: 'var(--red)', padding: 24 }}>{hata}</div>}
-
-      {!yukleniyor && !hata && veri && (
-        <>
-          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
-            <span>Toplam <strong style={{ color: 'var(--text)' }}>{veri.toplam_siparis}</strong> sipariş</span>
-            <span>Toplam <strong style={{ color: 'var(--text)' }}>{veri.toplam_adet}</strong> adet satış</span>
-            <span>Toplam <strong style={{ color: 'var(--green)' }}>{veri.toplam_gelir.toLocaleString('tr-TR')}₺</strong> ciro</span>
-          </div>
-
-          {veri.tarama_eksik_kaldi && (
-            <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 12, padding: '6px 10px', background: 'rgba(245,158,11,0.1)', borderRadius: 'var(--r-sm)' }}>
-              ⚠️ Sipariş geçmişi çok büyük olduğu için tarama bir sınıra takıldı - en eski bazı siparişler bu hesaba dahil olmamış olabilir.
-            </div>
-          )}
-
-          {liste.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Seçili aralıkta satış bulunamadı.</div>
-          ) : liste
-            .slice()
-            .sort((a, b) => metrik === 'adet' ? b.adet - a.adet : b.gelir - a.gelir)
-            .map((t, i) => {
-              const deger = metrik === 'adet' ? t.adet : t.gelir;
-              const oran = metrik === 'adet' ? t.oran_adet : t.oran_gelir;
-              const genislik = enYuksek > 0 ? Math.max(3, (deger / enYuksek) * 100) : 0;
-              return (
-                <div key={t.id} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%', color: 'var(--text)' }}>{t.ad}</span>
-                    <span style={{ color: 'var(--text3)' }}>
-                      {metrik === 'adet' ? `${t.adet} adet` : `${t.gelir.toLocaleString('tr-TR')}₺`} <strong style={{ color: 'var(--text)' }}>· %{oran}</strong>
-                    </span>
-                  </div>
-                  <div style={{ background: 'var(--bg2)', borderRadius: 4, height: 8, overflow: 'hidden' }}>
-                    <div style={{ width: `${genislik}%`, height: '100%', background: RENKLER[i % RENKLER.length], borderRadius: 4 }} />
-                  </div>
-                </div>
-              );
-            })}
-        </>
-      )}
+    <div className="stat-card">
+      <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>{baslik}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: '4px 0 2px' }}>{tl(veri.ciro)}</div>
+      <div style={{ fontSize: 12, color: 'var(--text2)' }}>{veri.siparis} sipariş · {veri.adet} ürün</div>
+      {alt && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{alt}</div>}
     </div>
   );
 }
 
+function DonemKart({ baslik, deger, alt, degisim }) {
+  return (
+    <div className="stat-card">
+      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>{deger}</div>
+      <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>{baslik}</div>
+      {degisim !== undefined && <div style={{ marginTop: 3 }}><Degisim deger={degisim} /></div>}
+      {alt && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{alt}</div>}
+    </div>
+  );
+}
+
+function Kart({ baslik, ikon, sag, children }) {
+  return (
+    <div className="card" style={{ padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+          {ikon && <i className={`ti ${ikon}`} style={{ color: ACCENT, marginRight: 8 }} />}{baslik}
+        </div>
+        {sag}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Tek seriyi gösteren grafik tooltip'i - aynı gün/ayın ciro, ürün ve sipariş sayısını birlikte gösterir.
+const SeriTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', fontSize: 12.5, color: 'var(--text)' }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      <div>Ciro: <strong>{tl(d.ciro)}</strong></div>
+      <div>Satılan ürün: <strong>{d.adet}</strong></div>
+      <div>Sipariş: <strong>{d.siparis}</strong></div>
+    </div>
+  );
+};
+
+const AdetTooltip = ({ active, payload, label, birim = 'adet' }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontSize: 12.5, color: 'var(--text)' }}>
+      <strong>{label}</strong>: {sayi(payload[0].value)} {birim}
+    </div>
+  );
+};
+
+function SiraliListe({ satirlar, deger, etiket, alt }) {
+  if (!satirlar.length) return <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Bu aralıkta satış yok.</div>;
+  const enYuksek = Math.max(...satirlar.map(deger), 1);
+  return satirlar.map((s, i) => (
+    <div key={i} style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, marginBottom: 3 }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>
+          <span style={{ color: 'var(--text3)', marginRight: 6 }}>{i + 1}.</span>{etiket(s)}
+        </span>
+        <span style={{ color: 'var(--text2)', whiteSpace: 'nowrap' }}>{alt(s)}</span>
+      </div>
+      <div style={{ background: 'var(--bg2)', borderRadius: 4, height: 7, overflow: 'hidden' }}>
+        <div style={{ width: `${Math.max(2, (deger(s) / enYuksek) * 100)}%`, height: '100%', background: ACCENT, borderRadius: 4 }} />
+      </div>
+    </div>
+  ));
+}
+
+function SiteIstatistikleri() {
+  const [aralik, setAralik] = useState('30gun');
+  const [veri, setVeri] = useState(null);
+  const [yukleniyor, setYukleniyor] = useState(true);
+  const [hata, setHata] = useState('');
+  const [grafikMetrik, setGrafikMetrik] = useState('ciro');
+  const [tasarimMetrik, setTasarimMetrik] = useState('adet');
+
+  const yukle = (yenile = false) => {
+    setYukleniyor(true);
+    setHata('');
+    istatistikApi.site(aralik, yenile)
+      .then(r => setVeri(r.data))
+      .catch(e => setHata(e.response?.data?.hata || 'Site satış verisi alınamadı.'))
+      .finally(() => setYukleniyor(false));
+  };
+  useEffect(() => { yukle(false); }, [aralik]);
+
+  const izgara = (min) => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${min}px, 1fr))`, gap: 14, marginBottom: 20 });
+
+  const ust = (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>🛒 Site Satışları</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+          {veri?.site ? veri.site.replace(/^https?:\/\//, '') : 'mirasgiyim.com'} siparişlerinden canlı
+          {veri?.guncellenme && ` · son güncelleme ${new Date(veri.guncellenme).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <select className="form-input" style={{ padding: '5px 8px', fontSize: 12.5, width: 'auto' }} value={aralik} onChange={e => setAralik(e.target.value)}>
+          {SITE_ARALIKLARI.map(a => <option key={a.key} value={a.key}>{a.ad}</option>)}
+        </select>
+        <button className="btn btn-secondary" onClick={() => yukle(true)} disabled={yukleniyor} title="Önbelleği atla, siteden şimdi tekrar çek">
+          <i className={`ti ${yukleniyor ? 'ti-loader-2' : 'ti-refresh'}`} />Yenile
+        </button>
+      </div>
+    </div>
+  );
+
+  if (yukleniyor && !veri) return <div style={{ marginBottom: 32 }}>{ust}<div style={{ textAlign: 'center', color: 'var(--text3)', padding: 40 }}>Siteden siparişler çekiliyor...</div></div>;
+  if (hata && !veri) return <div style={{ marginBottom: 32 }}>{ust}<div style={{ textAlign: 'center', color: 'var(--red)', padding: 40 }}>{hata}</div></div>;
+  if (!veri) return null;
+
+  const { ozet, hizli } = veri;
+  const gunlukMu = ozet.gun_sayisi <= 120;
+  const seri = gunlukMu ? veri.gunluk : veri.aylik;
+  const metrikAdi = { ciro: 'Ciro', adet: 'Satılan Ürün', siparis: 'Sipariş' }[grafikMetrik];
+  const tasarimlar = veri.tasarimlar.slice().sort((a, b) => b[tasarimMetrik] - a[tasarimMetrik]).slice(0, 12);
+  const eslesmesizVar = veri.tasarimlar.some(t => !t.eslesmeli);
+
+  return (
+    <div style={{ marginBottom: 36, opacity: yukleniyor ? 0.6 : 1, transition: 'opacity .2s' }}>
+      {ust}
+      {hata && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>{hata}</div>}
+      {veri.tarama_eksik_kaldi && (
+        <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 12 }}>⚠️ Sipariş geçmişi çok büyük - en eski bazı siparişler bu hesaba dahil olmamış olabilir.</div>
+      )}
+
+      {/* Hızlı bakış - seçili aralıktan bağımsız */}
+      <div style={izgara(170)}>
+        <HizliKart baslik="Bugün" veri={hizli.bugun} />
+        <HizliKart baslik="Dün" veri={hizli.dun} />
+        <HizliKart baslik="Son 7 Gün" veri={hizli.son7} />
+        <HizliKart baslik="Bu Ay" veri={hizli.bu_ay} alt={`Bu hızla ay sonu: ~${tl(hizli.bu_ay_tahmini)}`} />
+        <HizliKart baslik="Geçen Ay" veri={hizli.gecen_ay} />
+      </div>
+
+      {/* Seçili dönem */}
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', marginBottom: 10 }}>
+        {SITE_ARALIKLARI.find(a => a.key === aralik)?.ad} <span style={{ fontWeight: 400, color: 'var(--text3)' }}>({veri.aralik.baslangic} → {veri.aralik.bitis}, {ozet.gun_sayisi} gün)</span>
+      </div>
+      <div style={izgara(170)}>
+        <DonemKart baslik="Ciro" deger={tl(ozet.ciro)} degisim={ozet.degisim?.ciro} alt="iadeler düşülmüş, kargo dahil" />
+        <DonemKart baslik="Satılan Ürün" deger={`${ozet.adet} adet`} degisim={ozet.degisim?.adet} />
+        <DonemKart baslik="Sipariş" deger={ozet.siparis} degisim={ozet.degisim?.siparis} />
+        <DonemKart baslik="Ortalama Sepet" deger={tl(ozet.ortalama_sepet)} alt={`ürün başı ort. ${tl(ozet.urun_basi_ortalama)}`} />
+        <DonemKart baslik="Günlük Ort. Ciro" deger={tl(ozet.gunluk_ortalama_ciro)} alt={`aylık ort. ~${tl(ozet.aylik_ortalama_ciro)}`} />
+        <DonemKart baslik="Günlük Ort. Satış" deger={`${sayi(ozet.gunluk_ortalama_adet)} ürün`} alt={`${sayi(ozet.gunluk_ortalama_siparis)} sipariş/gün`} />
+        {ozet.bekleyen?.siparis > 0 && (
+          <DonemKart baslik="Ödeme Bekleyen" deger={tl(ozet.bekleyen.ciro)} alt={`${ozet.bekleyen.siparis} sipariş "Beklemede" (havale vb.) - ciroya dahil değil`} />
+        )}
+      </div>
+
+      {/* Zaman serisi - tek seri, metrik seçilebilir (iki farklı ölçek tek grafikte karışmasın) */}
+      <div style={{ marginBottom: 20 }}>
+        <Kart
+          baslik={`${gunlukMu ? 'Günlük' : 'Aylık'} ${metrikAdi}`}
+          ikon="ti-chart-bar"
+          sag={
+            <select className="form-input" style={{ padding: '4px 8px', fontSize: 12, width: 'auto' }} value={grafikMetrik} onChange={e => setGrafikMetrik(e.target.value)}>
+              <option value="ciro">Ciro</option>
+              <option value="adet">Satılan ürün</option>
+              <option value="siparis">Sipariş</option>
+            </select>
+          }
+        >
+          <ResponsiveContainer width="100%" height={230}>
+            <BarChart data={seri} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="etiket" tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={14} />
+              <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false}
+                tickFormatter={v => grafikMetrik === 'ciro' ? (v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : v) : v} />
+              <Tooltip content={<SeriTooltip />} cursor={{ fill: 'var(--bg2)' }} />
+              <Bar dataKey={grafikMetrik} name={metrikAdi} fill={ACCENT} radius={[4, 4, 0, 0]} maxBarSize={36} />
+            </BarChart>
+          </ResponsiveContainer>
+          {veri.en_iyi_gun && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
+              🏆 Bu aralıktaki en iyi gün: <strong style={{ color: 'var(--text)' }}>{veri.en_iyi_gun.etiket}</strong> — {tl(veri.en_iyi_gun.ciro)}, {veri.en_iyi_gun.adet} ürün
+            </div>
+          )}
+        </Kart>
+      </div>
+
+      {/* En çok satanlar */}
+      <div style={izgara(320)}>
+        <Kart
+          baslik="En Çok Satan Tasarımlar"
+          ikon="ti-palette"
+          sag={
+            <select className="form-input" style={{ padding: '4px 8px', fontSize: 12, width: 'auto' }} value={tasarimMetrik} onChange={e => setTasarimMetrik(e.target.value)}>
+              <option value="adet">Adete göre</option>
+              <option value="ciro">Ciroya göre</option>
+            </select>
+          }
+        >
+          <SiraliListe
+            satirlar={tasarimlar}
+            deger={t => t[tasarimMetrik]}
+            etiket={t => <>{t.ad}{t.urun_sayisi > 1 && <span style={{ color: 'var(--text3)', fontSize: 11 }}> · {t.urun_sayisi} ürün</span>}</>}
+            alt={t => tasarimMetrik === 'adet' ? `${t.adet} adet · %${t.oran}` : tl(t.ciro)}
+          />
+          {eslesmesizVar && (
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 10, lineHeight: 1.5 }}>
+              Aynı baskının farklı ürünleri (krem/füme sweat, ekru/beyaz tişört…) Stok Senkron'da aynı Master Tasarım'a bağlıysa tek tasarım sayılır. Bağlı olmayanlar ürün adının "–" işaretinden önceki kısmına göre gruplanır.
+            </div>
+          )}
+        </Kart>
+
+        <Kart baslik="En Çok Satan Ürünler" ikon="ti-shirt">
+          <SiraliListe
+            satirlar={veri.urunler.slice(0, 12)}
+            deger={u => u.adet}
+            etiket={u => u.ad}
+            alt={u => `${u.adet} adet · ${tl(u.ciro)}`}
+          />
+        </Kart>
+      </div>
+
+      {/* Dağılımlar */}
+      <div style={izgara(320)}>
+        <Kart baslik="Beden Dağılımı" ikon="ti-ruler-measure">
+          {veri.bedenler.length === 0 ? <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Veri yok</div> : (
+            <ResponsiveContainer width="100%" height={210}>
+              <BarChart data={veri.bedenler} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="beden" tick={{ fill: 'var(--text3)', fontSize: 10.5 }} axisLine={false} tickLine={false} interval={0} />
+                <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip content={<AdetTooltip />} cursor={{ fill: 'var(--bg2)' }} />
+                <Bar dataKey="adet" fill={ACCENT} radius={[4, 4, 0, 0]} maxBarSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Hangi bedenden ne kadar boş ürün stoklaman gerektiğini planlamak için.</div>
+        </Kart>
+
+        <Kart baslik="Haftanın Günlerine Göre" ikon="ti-calendar-week">
+          <ResponsiveContainer width="100%" height={210}>
+            <BarChart data={veri.hafta_gunleri} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="gun" tick={{ fill: 'var(--text3)', fontSize: 10.5 }} axisLine={false} tickLine={false} interval={0} tickFormatter={g => GUN_KISA[g] || g} />
+              <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <Tooltip content={<SeriTooltip />} cursor={{ fill: 'var(--bg2)' }} />
+              <Bar dataKey="adet" fill={ACCENT} radius={[4, 4, 0, 0]} maxBarSize={32} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Satılan ürün adedi. Paylaşım/reklam zamanlaması için.</div>
+        </Kart>
+
+        <Kart baslik="Saatlere Göre Sipariş" ikon="ti-clock">
+          <ResponsiveContainer width="100%" height={210}>
+            <BarChart data={veri.saatler} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="saat" tick={{ fill: 'var(--text3)', fontSize: 10.5 }} axisLine={false} tickLine={false} interval={2} tickFormatter={s => s.slice(0, 2)} />
+              <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <Tooltip content={<AdetTooltip birim="sipariş" />} cursor={{ fill: 'var(--bg2)' }} />
+              <Bar dataKey="siparis" fill={ACCENT} radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Kart>
+
+        <Kart baslik="İllere Göre" ikon="ti-map-pin">
+          <SiraliListe
+            satirlar={veri.iller.slice(0, 10)}
+            deger={il => il.siparis}
+            etiket={il => il.il}
+            alt={il => `${il.siparis} sipariş · ${tl(il.ciro)}`}
+          />
+          {veri.odeme_yontemleri.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+              Ödeme: {veri.odeme_yontemleri.map(o => `${o.yontem} (${o.siparis})`).join(' · ')}
+            </div>
+          )}
+        </Kart>
+      </div>
+    </div>
+  );
+}
+
+// ===================== Atölye / manuel sipariş istatistikleri (yerel kayıtlar) =====================
+
 export default function IstatistiklerPage() {
+  const [atolyeAcik, setAtolyeAcik] = useState(false);
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">📊 İstatistikler</div>
+          <div className="page-sub">Site satışları canlı olarak mirasgiyim.com'dan çekilir</div>
+        </div>
+      </div>
+
+      <SiteIstatistikleri />
+
+      <div className="card" style={{ padding: '14px 20px', marginBottom: 20, cursor: 'pointer' }} onClick={() => setAtolyeAcik(a => !a)}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+            🏭 Atölye / Manuel Siparişler <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text3)' }}>(bu panelden elle girilen siparişler - kurumsal, toptan vb.)</span>
+          </div>
+          <i className={`ti ${atolyeAcik ? 'ti-chevron-up' : 'ti-chevron-down'}`} />
+        </div>
+      </div>
+      {atolyeAcik && <AtolyeIstatistikleri />}
+    </div>
+  );
+}
+
+function AtolyeIstatistikleri() {
   const [data, setData] = useState(null);
   const [yukleniyor, setYukleniyor] = useState(true);
 
@@ -143,8 +386,8 @@ export default function IstatistiklerPage() {
       .finally(() => setYukleniyor(false));
   }, []);
 
-  if (yukleniyor) return <div style={{textAlign:'center',color:'var(--text2)',padding:60}}>Yükleniyor...</div>;
-  if (!data) return <div style={{textAlign:'center',color:'var(--red)',padding:60}}>Veri alınamadı</div>;
+  if (yukleniyor) return <div style={{textAlign:'center',color:'var(--text2)',padding:40}}>Yükleniyor...</div>;
+  if (!data) return <div style={{textAlign:'center',color:'var(--red)',padding:40}}>Veri alınamadı</div>;
 
   const { ozet, aylikCiro, kategoriCiro, topMusteriler } = data;
 
@@ -152,12 +395,6 @@ export default function IstatistiklerPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">📊 İstatistikler</div>
-          <div className="page-sub">Satış ve ciro analizi</div>
-        </div>
-      </div>
 
       {/* Özet metrikler */}
       <div className="stats-row" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:24 }}>
@@ -204,7 +441,7 @@ export default function IstatistiklerPage() {
         </ResponsiveContainer>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20, marginBottom:20 }}>
         {/* Kategori bazlı ciro */}
         <div className="card" style={{ padding:20 }}>
           <div style={{ fontSize:15, fontWeight:700, marginBottom:16, color:'var(--text)' }}>
@@ -253,8 +490,6 @@ export default function IstatistiklerPage() {
           ))}
         </div>
       </div>
-
-      <TasarimSatislariKarti />
     </div>
   );
 }
