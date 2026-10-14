@@ -101,4 +101,21 @@ async function etiketSvgGetir(basitKargoId) {
   return Buffer.from(data).toString('utf8');
 }
 
-module.exports = { firmalariListele, siparisVeKoduOlustur, etiketSvgGetir, hataMetni };
+/**
+ * Siparişleri tarih aralığına göre listeler (POST /v2/order/filter). Basit
+ * Kargo'ya entegre mağazalardan (WooCommerce, Shopier) aktarılan siparişler de
+ * burada görünür - "Siparişler" panelindeki kargo durumu teyidi buradan gelir.
+ * Tarih biçimi: YYYY-MM-DDTHH:mm:ss. Sayfa başına en fazla 100.
+ */
+async function siparisleriFiltrele({ baslangic, bitis, sayfa = 0, boyut = 100 }) {
+  const { data, headers } = await client().post('/v2/order/filter', {
+    startDate: baslangic, endDate: bitis, page: sayfa, size: boyut, sortBy: 'CREATED_TIME',
+  });
+  const liste = Array.isArray(data) ? data : (data && (data.content || data.data || data.orders)) || [];
+  const toplamSayfa = parseInt(headers['x-total-pages'], 10);
+  return { liste, toplamSayfa: Number.isNaN(toplamSayfa) ? null : toplamSayfa };
+}
+
+const tokenVar = () => !!process.env.BASIT_KARGO_TOKEN;
+
+module.exports = { firmalariListele, siparisVeKoduOlustur, etiketSvgGetir, siparisleriFiltrele, tokenVar, hataMetni };

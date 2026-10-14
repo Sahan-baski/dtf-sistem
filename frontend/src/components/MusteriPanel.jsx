@@ -3,6 +3,7 @@ import { siparisApi, kategoriApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import YeniSiparisModal from './YeniSiparisModal';
+import ToptanBolumu from '../toptan/ToptanBolumu';
 
 const DURUM_LABEL = {
   bekliyor:      { label:'Bekliyor',      cls:'badge-gray',  icon:'ti-clock'        },
@@ -50,7 +51,7 @@ export default function MusteriPanel() {
   const teslimEdilen = siparisler.filter(s => s.durum === 'teslim_edildi');
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto' }}>
+    <div style={{ maxWidth: sekme === 'toptan' ? 1280 : 700, margin: '0 auto' }}>
       {/* Karşılama */}
       <div style={{ marginBottom: 24, padding: '20px 0' }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>
@@ -62,19 +63,23 @@ export default function MusteriPanel() {
       </div>
 
       {/* Tab + Yeni sipariş butonu */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', background: 'var(--bg3)', borderRadius: 'var(--radius-sm)', padding: 4, gap: 2 }}>
-          {[['siparisler','Siparişlerim','ti-clipboard-list'], ['gecmis','Geçmiş','ti-history']].map(([key,label,icon]) => (
+          {[['siparisler','Siparişlerim','ti-clipboard-list'], ['gecmis','Geçmiş','ti-history'], ['toptan','Toptan Sipariş','ti-building-warehouse']].map(([key,label,icon]) => (
             <button key={key} onClick={() => setSekme(key)}
               style={{ padding: '7px 16px', border: 'none', borderRadius: 'var(--radius-sm)', background: sekme===key ? 'var(--bg2)' : 'none', color: sekme===key ? 'var(--text)' : 'var(--text2)', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               <i className={`ti ${icon}`}/>{label}
             </button>
           ))}
         </div>
-        <button className="btn btn-primary" onClick={() => setModalAcik(true)}>
-          <i className="ti ti-plus"/> Sipariş Ver
-        </button>
+        {sekme !== 'toptan' && (
+          <button className="btn btn-primary" onClick={() => setModalAcik(true)}>
+            <i className="ti ti-plus"/> Sipariş Ver
+          </button>
+        )}
       </div>
+
+      {sekme === 'toptan' && <ToptanBolumu kullanici={kullanici} toast={toast} />}
 
       {/* Aktif siparişler */}
       {sekme === 'siparisler' && (

@@ -143,3 +143,35 @@ export const yedekApi = {
   al: () => '/api/yedek/al',
   yukle: (veri, mod) => api.post('/yedek/yukle', { veri, mod }),
 };
+
+// Toptan sipariş (müşteri paneli + yönetim)
+export const toptanApi = {
+  katalog: () => api.get('/toptan/katalog'),
+  siparislerim: () => api.get('/toptan/siparislerim'),
+  siparisOlustur: (d) => api.post('/toptan/siparisler', d),
+  paytr: (id) => api.post(`/toptan/siparisler/${id}/paytr`),
+  havale: (id) => api.post(`/toptan/siparisler/${id}/havale`),
+  iptal: (id) => api.post(`/toptan/siparisler/${id}/iptal`),
+  admin: {
+    ozet: () => api.get('/toptan/admin/ozet'),
+    siparisler: (params) => api.get('/toptan/admin/siparisler', { params }),
+    guncelle: (id, d) => api.patch(`/toptan/admin/siparisler/${id}`, d),
+    odendi: (id, yontem) => api.post(`/toptan/admin/siparisler/${id}/odendi`, { yontem }),
+    iptal: (id, neden) => api.post(`/toptan/admin/siparisler/${id}/iptal`, { neden }),
+    uretimListesi: () => api.get('/toptan/admin/uretim-listesi'),
+    ayarlar: () => api.get('/toptan/admin/ayarlar'),
+    ayarlariKaydet: (d) => api.put('/toptan/admin/ayarlar', d),
+    paytrKaydet: (d) => api.put('/toptan/admin/paytr', d),
+    havuzGuncelle: (id, d) => api.put(`/toptan/admin/havuzlar/${id}`, d),
+    musteriGuncelle: (id, d) => api.patch(`/toptan/admin/musteriler/${id}`, d),
+  },
+};
+
+// Siparişler → Site & Shopier (Basit Kargo durumuyla birleşik)
+export const siparisSenkronApi = {
+  liste: (params) => api.get('/siparis-senkron', { params }),
+  senkronla: () => api.post('/siparis-senkron/senkronla'),
+  talimatBasildi: (idler) => api.post('/siparis-senkron/talimat-basildi', { idler }),
+  ayarlar: () => api.get('/siparis-senkron/ayarlar'),
+  ayarlariKaydet: (d) => api.put('/siparis-senkron/ayarlar', d),
+};

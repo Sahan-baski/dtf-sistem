@@ -35,6 +35,9 @@ app.use('/api/kategoriler',   authMiddleware, require('./routes/kategoriler'));
 app.use('/api/istatistikler', authMiddleware, require('./routes/istatistikler'));
 app.use('/api/yedek',         authMiddleware, require('./routes/yedek'));
 app.use('/api/varyasyon-denetim', authMiddleware, require('./routes/varyasyonDenetim'));
+// Toptan sipariş: PayTR bildirim/sonuç uçları herkese açık, geri kalanını route kendi korur.
+app.use('/api/toptan', require('./routes/toptan'));
+app.use('/api/siparis-senkron', authMiddleware, require('./routes/siparisSenkron'));
 
 app.get('/api/ping', (req,res) => res.json({durum:'aktif'}));
 app.use(express.static(path.join(__dirname,'./public')));
@@ -53,4 +56,4 @@ async function seedAdmin() {
   } catch(e){ console.error('Seed hatası:',e.message); }
 }
 
-baglan().then(async () => { await seedAdmin(); app.listen(PORT, ()=>console.log(`✅ DTF Yönetim → http://localhost:${PORT}`)); });
+baglan().then(async () => { await seedAdmin(); require('./services/toptan').zamanlayiciBaslat(); require('./services/siparisSenkron').zamanlayiciBaslat(); app.listen(PORT, ()=>console.log(`✅ Miras & Şahan → http://localhost:${PORT}`)); });

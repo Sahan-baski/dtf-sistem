@@ -23,6 +23,10 @@ const SINIRSIZ_TASARIM_STOGU = 99999;
 const StokHavuzuSchema = new Schema({
   etiket: { type: String, required: true },
   bedenler: [{ type: String }],
+  // Toptan müşteri panelinde bu tablo sipariş verilebilir olarak gösterilsin mi,
+  // ve toptan birim fiyatı (KDV dahil/hariç notu Toptan Ayarlar'daki "fiyat notu"nda).
+  toptan_aktif: { type: Boolean, default: false },
+  toptan_fiyat: { type: Number, default: 0, min: 0 },
 }, { timestamps: true });
 
 const HavuzBedenStokSchema = new Schema({

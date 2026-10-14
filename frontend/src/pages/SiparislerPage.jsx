@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { siparisApi, shopierApi, dosyaApi, ayarlarApi, kategoriApi } from '../api';
+import { siparisApi, dosyaApi, ayarlarApi, kategoriApi } from '../api';
 import { useToast } from '../context/ToastContext';
 import YeniSiparisModal, { ASAMA_LABEL } from '../components/YeniSiparisModal';
+import SiteSiparisleri from '../siparisler/SiteSiparisleri';
 
 const DURUM_OPT = ['bekliyor','hazirlaniyor','hazir','kargoda','teslim_edildi'];
 const DURUM_LABEL = { bekliyor:'Bekliyor', hazirlaniyor:'Hazırlanıyor', hazir:'Hazır', kargoda:'Kargoda', teslim_edildi:'Teslim Edildi' };
@@ -204,7 +205,34 @@ function SiparisKarti({ s, onYukle, onSil, onDurumDegis, onAsamaDegis, gunlukKap
   );
 }
 
+/**
+ * Siparişler: "Site & Shopier" (WooCommerce + Shopier, Basit Kargo durumuyla
+ * otomatik senkron - eski "Üretim Talimatı" da burada) ve "Atölye Siparişleri"
+ * (bu panelden elle girilen DTF/kurumsal siparişler).
+ */
 export default function SiparislerPage() {
+  const toast = useToast();
+  const [sekme, setSekme] = useState(() => { try { return localStorage.getItem('siparis_sekme') || 'site'; } catch { return 'site'; } });
+  const degistir = (k) => { setSekme(k); try { localStorage.setItem('siparis_sekme', k); } catch { /* yok say */ } };
+  return (
+    <div>
+      <div className="page-header" style={{ marginBottom: 12 }}>
+        <div><div className="page-title">📦 Siparişler</div><div className="page-sub">Site, Shopier ve atölye siparişleri tek yerde</div></div>
+      </div>
+      <div style={{ display: 'flex', background: 'var(--bg3)', borderRadius: 'var(--radius-sm)', padding: 4, gap: 2, marginBottom: 16, width: 'fit-content' }}>
+        {[['site', 'Site & Shopier', 'ti-world'], ['atolye', 'Atölye Siparişleri', 'ti-tool']].map(([k, ad, ikon]) => (
+          <button key={k} onClick={() => degistir(k)}
+            style={{ padding: '7px 16px', border: 'none', borderRadius: 'var(--radius-sm)', background: sekme === k ? 'var(--bg)' : 'none', color: sekme === k ? 'var(--text)' : 'var(--text2)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className={`ti ${ikon}`} />{ad}
+          </button>
+        ))}
+      </div>
+      {sekme === 'site' ? <SiteSiparisleri toast={toast} /> : <AtolyeSiparisleri />}
+    </div>
+  );
+}
+
+function AtolyeSiparisleri() {
   const toast = useToast();
   const [data, setData] = useState({ aktif:[], teslim_edilen:[] });
   const [kategoriler, setKategoriler] = useState([]);
@@ -212,7 +240,6 @@ export default function SiparislerPage() {
   const [yeniModalAcik, setYeniModalAcik] = useState(false);
   const [yukleniyor, setYukleniyor] = useState(false);
   const [arsivAcik, setArsivAcik] = useState(false);
-  const [shopierYukleniyor, setShopierYukleniyor] = useState(false);
   const [gunlukKapasite, setGunlukKapasite] = useState({ kapasite:180 });
 
   const yukle = useCallback(async () => {
@@ -240,7 +267,6 @@ export default function SiparislerPage() {
   };
   const handleYeniSiparis=async fd=>{try{await siparisApi.create(fd);setYeniModalAcik(false);toast('Sipariş oluşturuldu ✓');yukle();}catch{toast('Hata','error');}};
   const handleSil=async id=>{if(!confirm('Silinsin mi?'))return;try{await siparisApi.delete(id);toast('Silindi');yukle();}catch{toast('Hata','error');}};
-  const handleShopier=async()=>{setShopierYukleniyor(true);try{const r=await shopierApi.cek();toast(r.data.mesaj);yukle();}catch(e){toast(e.response?.data?.hata||'Shopier hatası','error');}finally{setShopierYukleniyor(false);}};
 
   const filtrelenmis = data.aktif.filter(s=>{
     if(filtre==='hepsi')return true;
@@ -261,9 +287,8 @@ export default function SiparislerPage() {
   return (
     <div>
       <div className="page-header">
-        <div><div className="page-title">📦 Sipariş Takibi</div><div className="page-sub">{data.aktif.length} aktif sipariş</div></div>
+        <div><div className="page-sub">{data.aktif.length} aktif atölye siparişi (bu panelden elle girilenler)</div></div>
         <div style={{ display:'flex', gap:8 }}>
-          <button className="btn btn-secondary" onClick={handleShopier} disabled={shopierYukleniyor}><i className="ti ti-refresh"/>{shopierYukleniyor?'...':'Shopier\'den Çek'}</button>
           <button className="btn btn-primary" onClick={()=>setYeniModalAcik(true)}><i className="ti ti-plus"/> Yeni Sipariş</button>
         </div>
       </div>

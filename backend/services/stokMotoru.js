@@ -522,6 +522,89 @@ async function satisUygula(havuzUrunId, beden, adet) {
   }
 }
 
+/**
+ * TOPLU stok hareketi - toptan siparişte onlarca hücre (tasarım × beden) aynı
+ * anda düşülür (yon = -1) ya da iptalde geri eklenir (yon = +1). satisUygula'yı
+ * hücre hücre çağırmak her hücre için tüm havuzu WooCommerce'e yeniden
+ * yazacağından dakikalar sürerdi; burada önce TÜM veritabanı değişiklikleri
+ * atomik ($inc) yapılır, sonra etkilenen her (ürün, beden) hücresi WooCommerce'e
+ * SADECE BİR KERE yazılır.
+ *
+ * Dönen `senkronla()` fonksiyonu WooCommerce yazımını yapar - çağıran isterse
+ * bekler, isterse arka planda çalıştırır (stok veritabanında zaten ayrılmış
+ * olur; site birkaç saniye sonra güncellenir).
+ */
+async function topluStokHareketi(kalemler, yon) {
+  const urunCache = new Map();
+  const havuzBedenleriCache = new Map();
+  const urunGetir = async (id) => {
+    const k = String(id);
+    if (!urunCache.has(k)) urunCache.set(k, await HavuzUrun.findById(id));
+    return urunCache.get(k);
+  };
+  const bedenlerGetir = async (havuzId) => {
+    const k = String(havuzId);
+    if (!havuzBedenleriCache.has(k)) havuzBedenleriCache.set(k, await havuzBedenleri(havuzId));
+    return havuzBedenleriCache.get(k);
+  };
+
+  const havuzBedenleri_ = new Set(); // "havuzId|beden"
+  const masterlar = new Set();
+  const tekilUrunler = new Set();
+
+  for (const k of kalemler) {
+    const adet = Math.max(0, parseInt(k.adet, 10) || 0);
+    if (!adet) continue;
+    const hu = await urunGetir(k.havuz_urun_id);
+    if (!hu) continue;
+    await HavuzBedenStok.findOneAndUpdate(
+      { havuz_id: hu.havuz_id, beden: k.beden },
+      { $inc: { miktar: yon * adet }, $set: { beslendi: true } },
+      { upsert: true }
+    );
+    havuzBedenleri_.add(`${hu.havuz_id}|${k.beden}`);
+    if (hu.master_tasarim_id) {
+      await MasterTasarim.updateOne({ _id: hu.master_tasarim_id }, { $inc: { stok: yon * adet } });
+      masterlar.add(String(hu.master_tasarim_id));
+    } else {
+      await HavuzUrun.updateOne({ _id: hu._id }, { $inc: { tasarim_stogu: yon * adet } });
+      tekilUrunler.add(String(hu._id));
+    }
+  }
+  // Eksiye düşen olursa (eşzamanlı bir site satışıyla çakışma vb.) sıfıra çek.
+  await HavuzBedenStok.updateMany({ miktar: { $lt: 0 } }, { miktar: 0 });
+  await MasterTasarim.updateMany({ stok: { $lt: 0 } }, { stok: 0 });
+  await HavuzUrun.updateMany({ tasarim_stogu: { $lt: 0 } }, { tasarim_stogu: 0 });
+
+  // WooCommerce'e yeniden yazılacak hücreler (tekilleştirilmiş).
+  const hucreler = new Set();
+  for (const hb of havuzBedenleri_) {
+    const [havuzId, beden] = hb.split('|');
+    const urunler = await HavuzUrun.find({ havuz_id: havuzId }, { _id: 1 });
+    urunler.forEach(u => hucreler.add(`${u._id}|${beden}`));
+  }
+  const tasarimiDegisenler = [
+    ...(masterlar.size ? await HavuzUrun.find({ master_tasarim_id: { $in: [...masterlar] } }) : []),
+    ...(await Promise.all([...tekilUrunler].map(urunGetir))).filter(Boolean),
+  ];
+  for (const u of tasarimiDegisenler) {
+    for (const b of await bedenlerGetir(u.havuz_id)) hucreler.add(`${u._id}|${b}`);
+  }
+
+  async function senkronla() {
+    const liste = [...hucreler];
+    const hatalar = [];
+    for (let i = 0; i < liste.length; i += 4) {
+      const grup = liste.slice(i, i + 4);
+      const sonuclar = await Promise.allSettled(grup.map(h => { const [id, beden] = h.split('|'); return hucreyiYenidenHesapla(id, beden); }));
+      sonuclar.forEach((s, j) => { if (s.status === 'rejected') hatalar.push(`${grup[j]}: ${s.reason && s.reason.message}`); });
+    }
+    if (hatalar.length) console.error('[StokSenkron] Toplu hareket sonrası WooCommerce senkron hataları:', hatalar);
+    return { hucre_sayisi: liste.length, hatalar };
+  }
+  return { senkronla, hucre_sayisi: hucreler.size };
+}
+
 /** WooCommerce varyasyon ID'sinden hangi havuz ürünü + bedene karşılık geldiğini bulur (webhook için). */
 async function varyasyonIdIleBul(wcVaryasyonId) {
   const havuzUrun = await HavuzUrun.findOne({ 'varyasyonlar.wc_varyasyon_id': wcVaryasyonId });
@@ -551,5 +634,7 @@ module.exports = {
   havuzGorselleriniYenidenUygula,
   tabloVerisi,
   satisUygula,
+  topluStokHareketi,
+  tasarimStogu,
   varyasyonIdIleBul,
 };

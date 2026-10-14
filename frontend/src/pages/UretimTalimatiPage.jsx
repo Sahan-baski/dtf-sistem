@@ -106,7 +106,7 @@ function SiparisListesi({ onSec, toast }) {
 // Basit Kargo'dan canlı liste alınamazsa (token tanımlı değil vb.) kullanılacak yedek liste.
 const KARGO_FIRMALARI_YEDEK = ['Aras Kargo', 'Yurtiçi Kargo', 'MNG Kargo', 'Sürat Kargo', 'PTT Kargo', 'Trendyol Express', 'Hepsijet'];
 
-function SiparisDetay({ siparisId, onGeri, toast }) {
+export function SiparisDetay({ siparisId, onGeri, toast }) {
   const [siparis, setSiparis] = useState(null);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [kargoFirmalari, setKargoFirmalari] = useState(KARGO_FIRMALARI_YEDEK);
@@ -210,7 +210,7 @@ function SiparisDetay({ siparisId, onGeri, toast }) {
   return (
     <div>
       <div className="no-print" style={{ marginBottom: 18 }}>
-        <button className="btn btn-secondary btn-sm" onClick={onGeri} style={{ marginBottom: 14 }}><i className="ti ti-arrow-left" />Sipariş listesine dön</button>
+        <button className="btn btn-secondary btn-sm" onClick={onGeri} style={{ marginBottom: 14 }}><i className="ti ti-arrow-left" />Siparişlere dön</button>
 
         <div className="card" style={{ padding: 16, marginBottom: 12 }}>
           <strong>🚚 Kargo Etiket Bilgileri</strong>

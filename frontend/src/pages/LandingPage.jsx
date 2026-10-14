@@ -51,9 +51,9 @@ export default function LandingPage() {
         {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:40 }}>
           <div style={{ display:'inline-flex', alignItems:'center', gap:12, marginBottom:8 }}>
-            <div style={{ width:48, height:48, borderRadius:14, background:'var(--g-indigo)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:800, color:'white', boxShadow:'var(--glow-indigo)' }}>D</div>
+            <div style={{ width:48, height:48, borderRadius:14, background:'var(--g-indigo)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:800, color:'white', boxShadow:'var(--glow-indigo)' }}>M</div>
             <div style={{ fontSize:26, fontWeight:800, color:'var(--text)', letterSpacing:-0.5 }}>
-              DTF <span style={{ color:'var(--indigo)' }}>Yönetim</span>
+              Miras <span style={{ color:'var(--indigo)' }}>&amp; Şahan</span>
             </div>
           </div>
           <div style={{ fontSize:14, color:'var(--text2)' }}>

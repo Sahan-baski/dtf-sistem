@@ -13,6 +13,10 @@ const UserSchema = new mongoose.Schema({
   adres:         { type:String, default:'' },
   vergi_no:      { type:String, default:'' },
   onay_bekliyor: { type:Boolean, default:false },
+  // Toptan sipariş paneline erişim (müşteri hesapları için admin açar) ve
+  // bu müşteriye özel ek indirim yüzdesi (kademe indirimine ek olarak uygulanır).
+  toptan_yetkili: { type:Boolean, default:false },
+  toptan_iskonto: { type:Number, default:0, min:0, max:90 },
 }, { timestamps:true });
 UserSchema.pre('save', async function() {
   if (!this.isModified('sifre')) return;

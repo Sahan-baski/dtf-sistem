@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ToastProvider } from './context/ToastContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
@@ -10,9 +10,10 @@ import KullaniciYonetimiPage from './pages/KullaniciYonetimiPage';
 import UrunYonetimiPage from './pages/UrunYonetimiPage';
 import StokSenkronPage from './pages/StokSenkronPage';
 import FiyatGuncellePage from './pages/FiyatGuncellePage';
-import UretimTalimatiPage from './pages/UretimTalimatiPage';
 import AyarlarPage from './pages/AyarlarPage';
 import IstatistiklerPage from './pages/IstatistiklerPage';
+import ToptanPage from './pages/ToptanPage';
+import { toptanApi } from './api';
 import MusteriPanel from './components/MusteriPanel';
 
 const MENU = [
@@ -20,9 +21,9 @@ const MENU = [
   { key:'siparisler',   label:'Siparişler',   icon:'ti-clipboard-list', roller:['admin','calisan'] },
   { key:'istatistikler',label:'İstatistikler',icon:'ti-chart-bar',       roller:['admin']           },
   { key:'urunler',      label:'Ürünler',      icon:'ti-shirt',          roller:['admin']           },
+  { key:'toptan',       label:'Toptan',       icon:'ti-building-warehouse', roller:['admin']       },
   { key:'stoksenkron',  label:'Stok Senkron', icon:'ti-replace',        roller:['admin']           },
   { key:'fiyatguncelle',label:'Fiyat Güncelle',icon:'ti-currency-lira', roller:['admin']           },
-  { key:'uretimtalimati',label:'Üretim Talimatı',icon:'ti-printer',     roller:['admin','calisan'] },
   { key:'musteriler',   label:'Müşteriler',   icon:'ti-users',          roller:['admin']           },
   { key:'gorevler',     label:'Görevler',     icon:'ti-checkbox',       roller:['admin','calisan'] },
   { key:'kullanicilar', label:'Kullanıcılar', icon:'ti-user-cog',       roller:['admin']           },
@@ -32,6 +33,15 @@ const MENU = [
 function YonetimApp() {
   const { kullanici, cikisYap } = useAuth();
   const [aktif, setAktif] = useState('ozet');
+  // Ödemesi alınmış, hazırlanmayı bekleyen toptan sipariş sayısı - menüde kırmızı rozet.
+  const [toptanSayac, setToptanSayac] = useState(0);
+  useEffect(() => {
+    if (kullanici?.rol !== 'admin') return;
+    const cek = () => toptanApi.admin.ozet().then(r => setToptanSayac(r.data.aksiyon_bekleyen || 0)).catch(() => {});
+    cek();
+    const t = setInterval(cek, 60000);
+    return () => clearInterval(t);
+  }, [kullanici?.rol]);
   const gorulecek = MENU.filter(m => m.roller.includes(kullanici?.rol));
   const baslarf = (kullanici?.ad || kullanici?.kullanici_adi || 'A')[0].toUpperCase();
 
@@ -40,8 +50,8 @@ function YonetimApp() {
       <nav className="topnav">
         {/* Logo */}
         <div className="topnav-logo">
-          <div className="topnav-logo-badge">D</div>
-          <span className="topnav-logo-text">DTF <span>Yönetim</span></span>
+          <div className="topnav-logo-badge">M</div>
+          <span className="topnav-logo-text">Miras <span>&amp; Şahan</span></span>
         </div>
 
         {/* Nav links */}
@@ -49,6 +59,7 @@ function YonetimApp() {
           {gorulecek.map(m => (
             <button key={m.key} className={`nav-link ${aktif===m.key?'active':''}`} onClick={()=>setAktif(m.key)}>
               <i className={`ti ${m.icon}`}/>{m.label}
+              {m.key==='toptan' && toptanSayac>0 && <span style={{ marginLeft:4, background:'var(--red)', color:'#fff', borderRadius:999, padding:'0 6px', fontSize:11, fontWeight:700 }}>{toptanSayac}</span>}
             </button>
           ))}
         </div>
@@ -68,9 +79,9 @@ function YonetimApp() {
         {aktif==='siparisler'    && <SiparislerPage/>}
         {aktif==='istatistikler' && <IstatistiklerPage/>}
         {aktif==='urunler'       && <UrunYonetimiPage/>}
+        {aktif==='toptan'        && <ToptanPage onSayacDegisti={setToptanSayac}/>}
         {aktif==='stoksenkron'   && <StokSenkronPage/>}
         {aktif==='fiyatguncelle' && <FiyatGuncellePage/>}
-        {aktif==='uretimtalimati' && <UretimTalimatiPage/>}
         {aktif==='musteriler'    && <MusterilerPage/>}
         {aktif==='gorevler'      && <GorevlerPage/>}
         {aktif==='kullanicilar'  && <KullaniciYonetimiPage/>}
@@ -95,8 +106,8 @@ function MusteriApp() {
     <>
       <nav className="topnav">
         <div className="topnav-logo">
-          <div className="topnav-logo-badge">D</div>
-          <span className="topnav-logo-text">DTF <span>Yönetim</span></span>
+          <div className="topnav-logo-badge">M</div>
+          <span className="topnav-logo-text">Miras <span>&amp; Şahan</span></span>
         </div>
         <div className="topnav-right">
           <div style={{ fontSize:12, color:'var(--text2)', marginRight:4, textAlign:'right' }}>
