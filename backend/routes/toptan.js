@@ -2,7 +2,7 @@
  * Toptan sipariş uç noktaları.
  *  - Herkese açık (giriş gerektirmeyen) iki uç: PayTR'ın ödeme bildirimi ve
  *    ödeme ekranı (iframe) sonrası yönlendirme sayfası.
- *  - Müşteri uçları: sadece admin'in "toptan yetkili" yaptığı müşteri hesapları.
+ *  - Müşteri uçları (Miras Sipariş Alanı): giriş yapmış tüm aktif müşteri hesapları + admin.
  *  - /admin/... uçları: sadece admin.
  */
 const express = require('express');
@@ -65,8 +65,8 @@ router.use(authMiddleware);
 async function toptanKullanicisi(req, res) {
   const u = await User.findById(req.kullanici.id);
   if (!u || !u.aktif) { res.status(401).json({ hata: 'Oturum geçersiz' }); return null; }
-  if (u.rol === 'admin' || (u.rol === 'musteri' && u.toptan_yetkili)) return u;
-  res.status(403).json({ hata: 'Toptan sipariş için hesabınızın yetkilendirilmesi gerekiyor. Lütfen bizimle iletişime geçin.', yetkisiz: true });
+  if (u.rol === 'admin' || u.rol === 'musteri') return u;
+  res.status(403).json({ hata: 'Bu bölüm müşteri hesapları içindir.', yetkisiz: true });
   return null;
 }
 
@@ -121,7 +121,7 @@ router.post('/siparisler/:id/iptal', async (req, res) => {
   try {
     const u = await toptanKullanicisi(req, res); if (!u) return;
     const sip = await kendiSiparisi(req, res, u); if (!sip) return;
-    if (sip.durum !== 'odeme_bekliyor' || sip.odeme.odendi) return res.status(400).json({ hata: 'Ödemesi yapılmış ya da hazırlanmaya başlanmış sipariş panelden iptal edilemez, lütfen bizimle iletişime geçin.' });
+    if (!['odeme_bekliyor', 'fiyat_bekliyor'].includes(sip.durum) || sip.odeme.odendi) return res.status(400).json({ hata: 'Ödemesi yapılmış ya da hazırlanmaya başlanmış sipariş panelden iptal edilemez, lütfen bizimle iletişime geçin.' });
     res.json(await toptan.iptalEt(sip, 'Müşteri iptal etti'));
   } catch (e) { hataYaniti(res, e); }
 });
@@ -178,6 +178,13 @@ admin.post('/siparisler/:id/odendi', async (req, res) => {
   } catch (e) { hataYaniti(res, e); }
 });
 
+admin.post('/siparisler/:id/fiyat', async (req, res) => {
+  try {
+    const b = req.body || {};
+    res.json(await toptan.fiyatVer(req.params.id, b.fiyatlar, { tabloyaKaydet: !!b.tabloya_kaydet }));
+  } catch (e) { hataYaniti(res, e); }
+});
+
 admin.post('/siparisler/:id/iptal', async (req, res) => {
   try {
     const sip = await ToptanSiparis.findById(req.params.id);
@@ -196,7 +203,7 @@ admin.get('/ayarlar', async (req, res) => {
       toptan.ayarlariGetir(),
       toptan.paytrGetir(),
       StokHavuzu.find().sort({ createdAt: 1 }).lean(),
-      User.find({ rol: 'musteri' }).select('ad soyad firma_adi kullanici_adi telefon email aktif onay_bekliyor toptan_yetkili toptan_iskonto').sort({ createdAt: -1 }).lean(),
+      User.find({ rol: 'musteri' }).select('ad soyad firma_adi kullanici_adi telefon email aktif onay_bekliyor toptan_iskonto').sort({ createdAt: -1 }).lean(),
     ]);
     const urunSayilari = await HavuzUrun.aggregate([{ $group: { _id: '$havuz_id', sayi: { $sum: 1 } } }]);
     const sayiMap = new Map(urunSayilari.map(x => [String(x._id), x.sayi]));
@@ -204,7 +211,7 @@ admin.get('/ayarlar', async (req, res) => {
       ayarlar,
       paytr: toptan.paytrGorunumu(paytr),
       bildirim_url: `${tabanUrl(req)}/api/toptan/paytr-bildirim`,
-      havuzlar: havuzlar.map(h => ({ id: h._id, etiket: h.etiket, bedenler: h.bedenler, toptan_aktif: !!h.toptan_aktif, toptan_fiyat: h.toptan_fiyat || 0, urun_sayisi: sayiMap.get(String(h._id)) || 0 })),
+      havuzlar: havuzlar.map(h => ({ id: h._id, etiket: h.etiket, bedenler: h.bedenler, toptan_gizli: !!h.toptan_gizli, toptan_fiyat: h.toptan_fiyat || 0, urun_sayisi: sayiMap.get(String(h._id)) || 0 })),
       musteriler,
     });
   } catch (e) { hataYaniti(res, e); }
@@ -221,18 +228,17 @@ admin.put('/paytr', async (req, res) => {
 admin.put('/havuzlar/:id', async (req, res) => {
   try {
     const g = {};
-    if (req.body.toptan_aktif !== undefined) g.toptan_aktif = !!req.body.toptan_aktif;
+    if (req.body.toptan_gizli !== undefined) g.toptan_gizli = !!req.body.toptan_gizli;
     if (req.body.toptan_fiyat !== undefined) g.toptan_fiyat = Math.max(0, parseFloat(req.body.toptan_fiyat) || 0);
     const h = await StokHavuzu.findByIdAndUpdate(req.params.id, g, { new: true });
     if (!h) return res.status(404).json({ hata: 'Tablo bulunamadı' });
-    res.json({ id: h._id, toptan_aktif: h.toptan_aktif, toptan_fiyat: h.toptan_fiyat });
+    res.json({ id: h._id, toptan_gizli: h.toptan_gizli, toptan_fiyat: h.toptan_fiyat });
   } catch (e) { hataYaniti(res, e); }
 });
 
 admin.patch('/musteriler/:id', async (req, res) => {
   try {
     const g = {};
-    if (req.body.toptan_yetkili !== undefined) g.toptan_yetkili = !!req.body.toptan_yetkili;
     if (req.body.toptan_iskonto !== undefined) g.toptan_iskonto = Math.max(0, Math.min(90, parseFloat(req.body.toptan_iskonto) || 0));
     const u = await User.findOneAndUpdate({ _id: req.params.id, rol: 'musteri' }, g, { new: true }).select('-sifre');
     if (!u) return res.status(404).json({ hata: 'Müşteri bulunamadı' });

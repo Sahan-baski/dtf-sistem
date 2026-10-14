@@ -1,14 +1,16 @@
 /**
  * Toptan sipariş motoru.
  *
- * Müşteri, Stok Senkron'daki "toptan satışa açık" tabloları (havuzları) görür;
+ * Müşteri panelindeki "Miras Sipariş Alanı": giriş yapmış her müşteri, Stok
+ * Senkron'daki tabloları (havuzları - yöneticinin gizlemedikleri hariç) görür;
  * her hücreye (tasarım × beden) iki ayrı adet girebilir:
  *   - stoktan:     o bedenin havuz stoğu + tasarımın (DTF kağıdı) stoğu ile sınırlı.
  *                  Sipariş oluşturulduğu AN stoktan düşülür (site ile aynı havuz).
  *   - ön sipariş:  stokta olmayan/yetmeyen için üretim talebi, stoğa dokunmaz.
  * Minimumlar: stoktan en az X adet, ön siparişte en az Y adet (Toptan Ayarlar).
  * Fiyat: tablo başına toptan birim fiyatı → toplam adede göre kademe indirimi →
- * müşteriye özel ek indirim.
+ * müşteriye özel ek indirim. Fiyatı girilmemiş tablodan gelen sipariş
+ * "fiyat_bekliyor" olarak açılır; yönetici fiyatı bildirince ödemeye açılır.
  * Ödeme: PayTR (iFrame API) ya da havale/EFT. Belirlenen süre içinde ödenmeyen
  * siparişler otomatik iptal edilir ve ayrılan stok serbest bırakılır.
  */
@@ -126,7 +128,7 @@ async function urunGorselleri(wcIdler) {
 
 /** Toptana açık tabloların güncel stok durumu + her ürünün tasarım (DTF kağıdı) limiti. */
 async function musaitlik() {
-  const havuzlar = await StokHavuzu.find({ toptan_aktif: true, toptan_fiyat: { $gt: 0 } }).sort({ createdAt: 1 }).lean();
+  const havuzlar = await StokHavuzu.find({ toptan_gizli: { $ne: true } }).sort({ createdAt: 1 }).lean();
   const havuzIdler = havuzlar.map(h => h._id);
   const [stoklar, urunler] = await Promise.all([
     HavuzBedenStok.find({ havuz_id: { $in: havuzIdler } }).lean(),
@@ -167,7 +169,7 @@ async function katalog(kullanici) {
     id: h._id,
     etiket: h.etiket,
     bedenler: h.bedenler,
-    birim_fiyat: h.toptan_fiyat,
+    birim_fiyat: h.toptan_fiyat || 0, // 0 = fiyat sipariş sonrası bildirilecek
     stoklar: m.havuzStok[h._id],
     urunler: [...m.urunMap.values()].filter(u => String(u.havuz_id) === String(h._id)).map(u => ({
       id: u._id, ad: u.wc_urun_adi, wc_urun_id: u.wc_urun_id, gorsel: gorseller[u.wc_urun_id] || '', tasarim_anahtar: u.tasarim_anahtar,
@@ -216,7 +218,7 @@ function dogrula(girdi, m) {
     if (onceki) onceki.adet += adet;
     else birlesik.set(anahtar, {
       tip, havuz_id: havuz._id, havuz_etiket: havuz.etiket, havuz_urun_id: urun._id, wc_urun_id: urun.wc_urun_id,
-      urun_adi: urun.wc_urun_adi, beden: k.beden, adet, birim_fiyat: havuz.toptan_fiyat, tasarim_anahtar: urun.tasarim_anahtar,
+      urun_adi: urun.wc_urun_adi, beden: k.beden, adet, birim_fiyat: havuz.toptan_fiyat || 0, tasarim_anahtar: urun.tasarim_anahtar,
     });
   }
   const kalemler = [...birlesik.values()];
@@ -294,6 +296,7 @@ async function siparisOlustur(kullanici, { kalemler, teslimat, musteri_notu }) {
     if (fiyat.stok_adet > 0 && fiyat.stok_adet < ayar.min_stok_adet) throw new KullaniciHatasi(`Stoktan siparişte en az ${ayar.min_stok_adet} adet olmalı (şu an ${fiyat.stok_adet}).`);
     if (fiyat.on_siparis_adet > 0 && fiyat.on_siparis_adet < ayar.min_on_siparis_adet) throw new KullaniciHatasi(`Ön siparişte en az ${ayar.min_on_siparis_adet} adet olmalı (şu an ${fiyat.on_siparis_adet}).`);
     const tes = teslimatDogrula(teslimat);
+    const fiyatsiz = [...new Set(temiz.filter(k => !(k.birim_fiyat > 0)).map(k => k.havuz_etiket))];
 
     const sip = await ToptanSiparis.create({
       siparis_no: await yeniSiparisNo(),
@@ -301,8 +304,12 @@ async function siparisOlustur(kullanici, { kalemler, teslimat, musteri_notu }) {
       teslimat: tes,
       kalemler: temiz,
       ...fiyat,
+      durum: fiyatsiz.length ? 'fiyat_bekliyor' : 'odeme_bekliyor',
       musteri_notu: String(musteri_notu || '').slice(0, 1000),
-      gecmis: [{ olay: `Sipariş oluşturuldu (${fiyat.stok_adet} stoktan, ${fiyat.on_siparis_adet} ön sipariş)` }],
+      gecmis: [
+        { olay: `Sipariş oluşturuldu (${fiyat.stok_adet} stoktan, ${fiyat.on_siparis_adet} ön sipariş)` },
+        ...(fiyatsiz.length ? [{ olay: `Fiyat bekleniyor: ${fiyatsiz.join(', ')}` }] : []),
+      ],
     });
 
     const stokKalemleri = temiz.filter(k => k.tip === 'stok');
@@ -340,11 +347,53 @@ async function iptalEt(sip, neden) {
   });
 }
 
+/**
+ * Yönetici fiyatı bildirir: fiyatlar = { havuzId: birimFiyat }. Tüm kalemlerin
+ * fiyatı belli olunca sipariş ödemeye açılır (odeme_bekliyor). İsteğe bağlı
+ * olarak aynı fiyat tabloya da yazılır, böylece sonraki siparişlerde otomatik gelir.
+ */
+async function fiyatVer(sipId, fiyatlar, { tabloyaKaydet } = {}) {
+  return kilitli(async () => {
+    const sip = await ToptanSiparis.findById(sipId);
+    if (!sip) throw new KullaniciHatasi('Sipariş bulunamadı.');
+    if (sip.durum !== 'fiyat_bekliyor') throw new KullaniciHatasi('Bu sipariş fiyat beklemiyor.');
+    const temiz = {};
+    for (const [id, v] of Object.entries(fiyatlar || {})) {
+      const n = Math.round((parseFloat(v) || 0) * 100) / 100;
+      if (n > 0) temiz[String(id)] = n;
+    }
+    const kalemler = sip.kalemler.map(k => {
+      const o = typeof k.toObject === 'function' ? k.toObject() : { ...k };
+      if (temiz[String(o.havuz_id)]) o.birim_fiyat = temiz[String(o.havuz_id)];
+      return o;
+    });
+    const eksik = [...new Set(kalemler.filter(k => !(k.birim_fiyat > 0)).map(k => k.havuz_etiket))];
+    if (eksik.length) throw new KullaniciHatasi(`Şu tablolar için birim fiyat girin: ${eksik.join(', ')}`);
+
+    const ayar = await ayarlariGetir();
+    const f = fiyatHesapla(kalemler, ayar, sip.musteri_indirim_orani);
+    sip.kalemler = kalemler;
+    Object.assign(sip, {
+      ara_toplam: f.ara_toplam, kademe_indirim_orani: f.kademe_indirim_orani, indirim_tutari: f.indirim_tutari, toplam: f.toplam,
+    });
+    sip.durum = 'odeme_bekliyor';
+    sip.fiyat_verilme_tarihi = new Date();
+    sip.gecmis.push({ olay: `Fiyat bildirildi: ${yuvarla(f.toplam).toLocaleString('tr-TR')}₺ - ödeme bekleniyor` });
+    await sip.save();
+    if (tabloyaKaydet) {
+      for (const [id, fiyat] of Object.entries(temiz)) {
+        await StokHavuzu.updateOne({ _id: id, $or: [{ toptan_fiyat: { $lte: 0 } }, { toptan_fiyat: null }] }, { toptan_fiyat: fiyat });
+      }
+    }
+    return sip;
+  });
+}
+
 async function odendiIsaretle(sip, yontem, aciklama) {
   sip.odeme.odendi = true;
   sip.odeme.odeme_tarihi = new Date();
   if (yontem) sip.odeme.yontem = yontem;
-  if (sip.durum === 'odeme_bekliyor') sip.durum = 'odendi';
+  if (sip.durum === 'odeme_bekliyor' || sip.durum === 'fiyat_bekliyor') sip.durum = 'odendi';
   sip.gecmis.push({ olay: aciklama || 'Ödeme alındı' });
   await sip.save();
   return sip;
@@ -360,6 +409,7 @@ async function odemesizleriIptalEt() {
   let sayi = 0;
   for (const s of adaylar) {
     if (s.odeme.paytr_token_zamani && s.odeme.paytr_token_zamani > odemeEkraniSiniri) continue;
+    if (s.fiyat_verilme_tarihi && s.fiyat_verilme_tarihi > sinir) continue; // süre fiyat bildirildiği andan işler
     await iptalEt(s, `${ayar.odeme_sure_saat} saat içinde ödeme yapılmadı`);
     sayi++;
   }
@@ -398,6 +448,7 @@ async function paytrToken(sip, { ip, tabanUrl }) {
   const p = await paytrGetir();
   if (!paytrHazir(p)) throw new KullaniciHatasi('Kartla ödeme şu an kullanılamıyor. Havale/EFT ile ödeyebilir ya da bizimle iletişime geçebilirsiniz.');
   if (sip.durum === 'iptal') throw new KullaniciHatasi('Bu sipariş iptal edilmiş.');
+  if (sip.durum === 'fiyat_bekliyor') throw new KullaniciHatasi('Fiyat henüz bildirilmedi - fiyat bildirildiğinde ödeme yapabilirsiniz.');
   if (sip.odeme.odendi) throw new KullaniciHatasi('Bu sipariş zaten ödenmiş.');
 
   const alanlar = {
@@ -473,7 +524,7 @@ async function paytrBildirim(govde) {
 
 /** Ödenmiş ve henüz üretimi bitmemiş ön siparişlerin tasarım × beden toplamı - üretim planı için. */
 async function uretimListesi() {
-  const siparisler = await ToptanSiparis.find({ durum: { $in: ['odeme_bekliyor', 'odendi', 'hazirlaniyor', 'uretimde'] }, on_siparis_adet: { $gt: 0 } }).sort({ createdAt: 1 }).lean();
+  const siparisler = await ToptanSiparis.find({ durum: { $in: ['fiyat_bekliyor', 'odeme_bekliyor', 'odendi', 'hazirlaniyor', 'uretimde'] }, on_siparis_adet: { $gt: 0 } }).sort({ createdAt: 1 }).lean();
   const harita = new Map();
   for (const s of siparisler) {
     const odendi = !!(s.odeme && s.odeme.odendi);
@@ -494,14 +545,14 @@ async function ozet() {
   const sayilar = await ToptanSiparis.aggregate([{ $group: { _id: '$durum', sayi: { $sum: 1 }, tutar: { $sum: '$toplam' } } }]);
   const s = {};
   sayilar.forEach(x => { s[x._id] = { sayi: x.sayi, tutar: x.tutar }; });
-  return { durumlar: s, aksiyon_bekleyen: (s.odendi && s.odendi.sayi) || 0 };
+  return { durumlar: s, aksiyon_bekleyen: ((s.odendi && s.odendi.sayi) || 0) + ((s.fiyat_bekliyor && s.fiyat_bekliyor.sayi) || 0) };
 }
 
 module.exports = {
   KullaniciHatasi,
   ayarlariGetir, ayarlariKaydet, paytrGetir, paytrKaydet, paytrGorunumu,
   musaitlik, katalog, dogrula, fiyatHesapla,
-  siparisOlustur, iptalEt, odendiIsaretle, odemesizleriIptalEt, zamanlayiciBaslat,
+  siparisOlustur, iptalEt, fiyatVer, odendiIsaretle, odemesizleriIptalEt, zamanlayiciBaslat,
   paytrToken, paytrBildirim, paytrSepeti, hmac,
   uretimListesi, ozet,
 };

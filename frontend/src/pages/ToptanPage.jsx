@@ -1,14 +1,17 @@
 /**
- * Yönetim → Toptan: toptan siparişler (ödeme takibi, durum, kargo, iptal/stok
- * iadesi), ön sipariş üretim listesi ve toptan ayarları (tablolar/fiyatlar,
- * müşteri yetkileri, minimumlar, kademe indirimleri, havale, PayTR).
+ * Yönetim → Miras Sipariş Alanı: müşteri panelinden gelen siparişler (fiyat
+ * bildirme, ödeme takibi, durum, kargo, iptal/stok iadesi), ön sipariş üretim
+ * listesi, müşteri görünümü önizlemesi ve ayarlar (tablolar/fiyatlar, müşteri
+ * indirimleri, minimumlar, kademe indirimleri, havale, PayTR).
  */
 import { useState, useEffect, useCallback } from 'react';
 import { toptanApi } from '../api';
 import { useToast } from '../context/ToastContext';
 import { DURUMLAR, DurumRozeti, SiparisMatrisi, proformaYazdir, tl, tarih } from '../toptan/ortak';
+import ToptanBolumu from '../toptan/ToptanBolumu';
 
 const FILTRELER = [
+  { key: 'fiyat_bekliyor', ad: 'Fiyat Bekleyen', ipucu: 'Fiyatı girilmemiş tablodan gelen - fiyat bildirmen gerekiyor' },
   { key: 'odendi', ad: 'Hazırlanacak', ipucu: 'Ödemesi alınmış, hazırlanmayı bekleyen' },
   { key: 'odeme_bekliyor', ad: 'Ödeme Bekleyen' },
   { key: 'hazirlaniyor,uretimde', ad: 'Hazırlanıyor / Üretimde' },
@@ -19,17 +22,18 @@ const FILTRELER = [
 ];
 
 export default function ToptanPage({ onSayacDegisti }) {
+  const toast = useToast();
   const [sekme, setSekme] = useState('siparisler');
   return (
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">🏬 Toptan</div>
-          <div className="page-sub">Müşteri panelinden verilen toptan siparişler, ödemeler ve ön sipariş üretimi</div>
+          <div className="page-title">🏬 Miras Sipariş Alanı</div>
+          <div className="page-sub">Müşteri panelindeki tablolardan verilen siparişler, üretim talepleri ve ödemeler — tüm müşteri hesapları sipariş verebilir</div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
-        {[['siparisler', 'Siparişler', 'ti-list-details'], ['uretim', 'Ön Sipariş Üretim Listesi', 'ti-printer'], ['ayarlar', 'Ayarlar', 'ti-settings']].map(([k, ad, ikon]) => (
+        {[['siparisler', 'Siparişler', 'ti-list-details'], ['uretim', 'Ön Sipariş Üretim Listesi', 'ti-printer'], ['onizleme', 'Müşteri Görünümü', 'ti-eye'], ['ayarlar', 'Tablolar & Ayarlar', 'ti-settings']].map(([k, ad, ikon]) => (
           <button key={k} className={`filter-btn ${sekme === k ? 'active' : ''}`} onClick={() => setSekme(k)}
             style={{ padding: '7px 14px', borderRadius: 999, border: '1px solid var(--border2)', background: sekme === k ? 'var(--indigo)' : 'var(--bg)', color: sekme === k ? '#fff' : 'var(--text2)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
             <i className={`ti ${ikon}`} /> {ad}
@@ -38,6 +42,14 @@ export default function ToptanPage({ onSayacDegisti }) {
       </div>
       {sekme === 'siparisler' && <Siparisler onSayacDegisti={onSayacDegisti} />}
       {sekme === 'uretim' && <UretimListesi />}
+      {sekme === 'onizleme' && (
+        <div>
+          <div className="card" style={{ padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--text2)' }}>
+            <i className="ti ti-eye" /> Müşterilerin panelinde gördüğü ekranın aynısı. Buradan verilen sipariş senin adına (test siparişi) oluşturulur ve stoktan düşer - denedikten sonra Siparişler'den iptal edebilirsin.
+          </div>
+          <ToptanBolumu kullanici={{ _id: 'yonetici-onizleme' }} toast={toast} />
+        </div>
+      )}
       {sekme === 'ayarlar' && <Ayarlar />}
     </div>
   );
@@ -81,7 +93,7 @@ function Siparisler({ onSayacDegisti }) {
           return (
             <button key={f.key} onClick={() => setFiltre(f.key)} title={f.ipucu}
               style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: `1px solid ${filtre === f.key ? 'var(--indigo)' : 'var(--border2)'}`, background: filtre === f.key ? 'var(--bg3)' : 'var(--bg)', color: filtre === f.key ? 'var(--indigo)' : 'var(--text2)' }}>
-              {f.ad}{n ? <span style={{ marginLeft: 6, background: f.key === 'odendi' ? 'var(--red)' : 'var(--bg4)', color: f.key === 'odendi' ? '#fff' : 'var(--text2)', borderRadius: 999, padding: '0 6px', fontSize: 11 }}>{n}</span> : null}
+              {f.ad}{n ? <span style={{ marginLeft: 6, background: ['odendi', 'fiyat_bekliyor'].includes(f.key) ? 'var(--red)' : 'var(--bg4)', color: ['odendi', 'fiyat_bekliyor'].includes(f.key) ? '#fff' : 'var(--text2)', borderRadius: 999, padding: '0 6px', fontSize: 11 }}>{n}</span> : null}
             </button>
           );
         })}
@@ -105,7 +117,7 @@ function Siparisler({ onSayacDegisti }) {
                 {s.on_siparis_adet > 0 && <div><span style={{ color: 'var(--amber)', fontWeight: 700 }}>{s.on_siparis_adet}</span> ön sipariş</div>}
               </div>
               <div style={{ textAlign: 'right', minWidth: 110 }}>
-                <div style={{ fontWeight: 800 }}>{tl(s.toplam)}</div>
+                <div style={{ fontWeight: 800 }}>{s.durum === 'fiyat_bekliyor' ? 'Fiyat ver' : tl(s.toplam)}</div>
                 <div style={{ fontSize: 11.5, color: s.odeme?.odendi ? 'var(--green)' : 'var(--amber)', fontWeight: 600 }}>
                   {s.odeme?.odendi ? `✓ Ödendi${s.odeme.yontem ? ` (${s.odeme.yontem === 'paytr' ? 'kart' : 'havale'})` : ''}` : s.odeme?.yontem === 'havale' ? 'Havale bekleniyor' : 'Ödenmedi'}
                 </div>
@@ -155,6 +167,7 @@ function SiparisDetay({ siparis: s, ayarlar, onKapat, onGuncellendi }) {
           </div>
           <div style={{ background: 'var(--bg2)', borderRadius: 'var(--r-xs)', padding: '10px 12px', fontSize: 13 }}>
             <b>Ödeme</b>
+            {s.durum === 'fiyat_bekliyor' && <div style={{ color: 'var(--purple, #7e22ce)', fontWeight: 600 }}>Fiyat henüz bildirilmedi - aşağıdan gir</div>}
             <div>Ara toplam {tl(s.ara_toplam)}</div>
             {s.indirim_tutari > 0 && <div style={{ color: 'var(--green)' }}>İndirim -{tl(s.indirim_tutari)} {s.kademe_indirim_orani ? `(adet %${s.kademe_indirim_orani})` : ''} {s.musteri_indirim_orani ? `(müşteri %${s.musteri_indirim_orani})` : ''}</div>}
             <div style={{ fontSize: 16, fontWeight: 800 }}>{tl(s.toplam)}</div>
@@ -163,7 +176,7 @@ function SiparisDetay({ siparis: s, ayarlar, onKapat, onGuncellendi }) {
               {s.odeme?.yontem && <span style={{ color: 'var(--text2)', fontWeight: 400 }}> · {s.odeme.yontem === 'paytr' ? 'PayTR (kart)' : 'Havale/EFT'}</span>}
             </div>
             {s.odeme?.paytr_hata && <div style={{ color: 'var(--red)', fontSize: 12 }}>Son PayTR hatası: {s.odeme.paytr_hata}</div>}
-            {!s.odeme?.odendi && s.durum !== 'iptal' && (
+            {!s.odeme?.odendi && !['iptal', 'fiyat_bekliyor'].includes(s.durum) && (
               <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} disabled={bekliyor}
                 onClick={() => confirm(`${tl(s.toplam)} tutarındaki ödemeyi (havale/EFT) aldığını onaylıyor musun?`) && islem(() => toptanApi.admin.odendi(s._id, 'havale'), 'Ödendi olarak işaretlendi')}>
                 <i className="ti ti-cash" />Ödeme alındı (havale)
@@ -171,6 +184,8 @@ function SiparisDetay({ siparis: s, ayarlar, onKapat, onGuncellendi }) {
             )}
           </div>
         </div>
+
+        {s.durum === 'fiyat_bekliyor' && <FiyatVerPaneli siparis={s} onGuncellendi={onGuncellendi} />}
 
         <SiparisMatrisi kalemler={s.kalemler} />
 
@@ -221,6 +236,50 @@ function SiparisDetay({ siparis: s, ayarlar, onKapat, onGuncellendi }) {
           ) : <span />}
           <button className="btn btn-secondary" onClick={() => proformaYazdir(s, ayarlar)}><i className="ti ti-printer" />Yazdır / Proforma</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Fiyatı girilmemiş tablolar için birim fiyat gir → toplam hesaplanır, sipariş müşteriye ödemeye açılır. */
+function FiyatVerPaneli({ siparis: s, onGuncellendi }) {
+  const toast = useToast();
+  const gruplar = [];
+  for (const k of s.kalemler) {
+    let g = gruplar.find(x => String(x.id) === String(k.havuz_id));
+    if (!g) gruplar.push(g = { id: String(k.havuz_id), etiket: k.havuz_etiket, adet: 0, fiyat: k.birim_fiyat || 0 });
+    g.adet += k.adet;
+  }
+  const [fiyatlar, setFiyatlar] = useState(() => Object.fromEntries(gruplar.map(g => [g.id, g.fiyat > 0 ? String(g.fiyat) : ''])));
+  const [tabloya, setTabloya] = useState(true);
+  const [bekliyor, setBekliyor] = useState(false);
+  const ara = gruplar.reduce((t, g) => t + g.adet * (parseFloat(fiyatlar[g.id]) || 0), 0);
+  const tamam = gruplar.every(g => parseFloat(fiyatlar[g.id]) > 0);
+  const gonder = async () => {
+    setBekliyor(true);
+    try { const r = await toptanApi.admin.fiyatVer(s._id, fiyatlar, tabloya); onGuncellendi(r.data); toast('Fiyat bildirildi - sipariş ödemeye açıldı ✓'); }
+    catch (e) { toast(e.response?.data?.hata || 'Fiyat kaydedilemedi', 'error'); }
+    finally { setBekliyor(false); }
+  };
+  return (
+    <div style={{ border: '2px solid var(--purple, #7e22ce)', borderRadius: 'var(--r-xs)', padding: '12px 14px', marginBottom: 14 }}>
+      <div style={{ fontWeight: 800, marginBottom: 2 }}>Fiyat ver</div>
+      <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 10 }}>Birim fiyatları gir; adet ve müşteri indirimleri otomatik uygulanır. Kaydedince sipariş müşterinin panelinde ödemeye açılır.</div>
+      {gruplar.map(g => (
+        <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 180, fontSize: 13 }}><b>{g.etiket}</b> <span style={{ color: 'var(--text3)' }}>· {g.adet} adet</span></div>
+          <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            Birim ₺<input type="number" min="0" step="0.01" className="form-input" style={{ width: 110, padding: '4px 6px' }} value={fiyatlar[g.id]}
+              onChange={e => setFiyatlar(f => ({ ...f, [g.id]: e.target.value }))} />
+          </label>
+        </div>
+      ))}
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, margin: '8px 0', cursor: 'pointer' }}>
+        <input type="checkbox" checked={tabloya} onChange={e => setTabloya(e.target.checked)} />Fiyatı olmayan tablolara bu fiyatı kaydet (sonraki siparişlerde otomatik gelsin)
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 13 }}>İndirim öncesi: <b>{tl(ara)}</b></span>
+        <button className="btn btn-primary btn-sm" disabled={!tamam || bekliyor} onClick={gonder}><i className="ti ti-send" />{bekliyor ? 'Kaydediliyor…' : 'Fiyatı bildir'}</button>
       </div>
     </div>
   );
@@ -324,25 +383,23 @@ function Ayarlar() {
     <div style={{ display: 'grid', gap: 18 }}>
       {/* Tablolar */}
       <div className="card" style={{ padding: 18 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>Toptana açık tablolar ve fiyatlar</div>
-        <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12 }}>Stok Senkron'daki her tablo müşteri panelinde bir sipariş matrisi olur. Stok, sitedeki ile aynı havuzdan gelir - toptan sipariş verilince siteden de düşer.</div>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>Tablolar ve birim fiyatlar</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.6 }}>Stok Senkron'daki her tablo müşteri panelinde (Miras Sipariş Alanı) otomatik listelenir. Stok, sitedeki ile aynı havuzdan gelir - stoktan sipariş verilince siteden de düşer.
+          Fiyat girmediğin tablodan sipariş gelirse sipariş <b>"Fiyat Bekleyen"</b> olarak düşer; fiyatı sipariş ekranından bildirirsin, müşteri sonra öder.</div>
         {veri.havuzlar.map(h => <HavuzSatiri key={h.id} h={h} onKaydet={havuzKaydet} />)}
         {!veri.havuzlar.length && <div style={{ color: 'var(--text3)' }}>Henüz Stok Senkron tablosu yok.</div>}
       </div>
 
       {/* Müşteriler */}
       <div className="card" style={{ padding: 18 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>Toptan müşteriler</div>
-        <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12 }}>Müşteri panelinden kayıt olan hesaplar burada listelenir (önce Kullanıcılar sayfasından onaylanmaları gerekir). Toptan siparişi açtığın müşteriler panellerinde "Toptan Sipariş" sekmesiyle sipariş verebilir; özel indirim adet indiriminin üstüne uygulanır.</div>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>Müşteriye özel indirim</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12 }}>Giriş yapabilen tüm müşteri hesapları Miras Sipariş Alanı'nı görür ve sipariş verebilir - ayrıca yetki vermen gerekmez. İstersen bir müşteriye özel indirim tanımla; adet indiriminin üstüne uygulanır.</div>
         {veri.musteriler.map(m => (
           <div key={m._id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 180 }}>
               <div style={{ fontWeight: 600 }}>{m.firma_adi || `${m.ad} ${m.soyad || ''}`}</div>
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>@{m.kullanici_adi} {m.telefon && `· ${m.telefon}`} {m.onay_bekliyor && <span style={{ color: 'var(--amber)' }}>· onay bekliyor</span>}</div>
             </div>
-            <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-              <input type="checkbox" checked={!!m.toptan_yetkili} onChange={e => musteriKaydet(m, { toptan_yetkili: e.target.checked })} />Toptan sipariş açık
-            </label>
             <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
               Özel indirim %<input type="number" min="0" max="90" className="form-input" style={{ width: 70, padding: '4px 6px' }} defaultValue={m.toptan_iskonto || 0}
                 onBlur={e => Number(e.target.value) !== (m.toptan_iskonto || 0) && musteriKaydet(m, { toptan_iskonto: Number(e.target.value) })} />
@@ -416,12 +473,12 @@ function HavuzSatiri({ h, onKaydet }) {
         <div style={{ fontSize: 12, color: 'var(--text3)' }}>{h.urun_sayisi} tasarım · {h.bedenler.join(', ')}</div>
       </div>
       <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-        Birim fiyat ₺<input type="number" min="0" className="form-input" style={{ width: 100, padding: '4px 6px' }} value={fiyat} onChange={e => setFiyat(e.target.value)}
-          onBlur={() => Number(fiyat) !== (h.toptan_fiyat || 0) && onKaydet(h, { toptan_fiyat: Number(fiyat) })} />
+        Birim fiyat ₺<input type="number" min="0" className="form-input" style={{ width: 110, padding: '4px 6px' }} value={fiyat} placeholder="sonra" onChange={e => setFiyat(e.target.value)}
+          onBlur={() => Number(fiyat) !== (h.toptan_fiyat || 0) && onKaydet(h, { toptan_fiyat: Number(fiyat) || 0 })} />
       </label>
-      <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title={!(Number(fiyat) > 0) ? 'Önce bir fiyat gir' : ''}>
-        <input type="checkbox" checked={!!h.toptan_aktif} disabled={!(Number(fiyat) > 0) && !h.toptan_aktif} onChange={e => onKaydet(h, { toptan_aktif: e.target.checked, toptan_fiyat: Number(fiyat) })} />
-        Toptana açık
+      <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+        <input type="checkbox" checked={!h.toptan_gizli} onChange={e => onKaydet(h, { toptan_gizli: !e.target.checked })} />
+        Müşteriye göster
       </label>
     </div>
   );

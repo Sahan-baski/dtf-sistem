@@ -21,7 +21,7 @@ const MENU = [
   { key:'siparisler',   label:'Siparişler',   icon:'ti-clipboard-list', roller:['admin','calisan'] },
   { key:'istatistikler',label:'İstatistikler',icon:'ti-chart-bar',       roller:['admin']           },
   { key:'urunler',      label:'Ürünler',      icon:'ti-shirt',          roller:['admin']           },
-  { key:'toptan',       label:'Toptan',       icon:'ti-building-warehouse', roller:['admin']       },
+  { key:'toptan',       label:'Miras Sipariş Alanı', icon:'ti-building-warehouse', roller:['admin']       },
   { key:'stoksenkron',  label:'Stok Senkron', icon:'ti-replace',        roller:['admin']           },
   { key:'fiyatguncelle',label:'Fiyat Güncelle',icon:'ti-currency-lira', roller:['admin']           },
   { key:'musteriler',   label:'Müşteriler',   icon:'ti-users',          roller:['admin']           },
@@ -33,7 +33,7 @@ const MENU = [
 function YonetimApp() {
   const { kullanici, cikisYap } = useAuth();
   const [aktif, setAktif] = useState('ozet');
-  // Ödemesi alınmış, hazırlanmayı bekleyen toptan sipariş sayısı - menüde kırmızı rozet.
+  // Ödemesi alınmış (hazırlanacak) + fiyat bekleyen toptan sipariş sayısı - menüde kırmızı rozet.
   const [toptanSayac, setToptanSayac] = useState(0);
   useEffect(() => {
     if (kullanici?.rol !== 'admin') return;

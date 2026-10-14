@@ -25,7 +25,8 @@ const StokHavuzuSchema = new Schema({
   bedenler: [{ type: String }],
   // Toptan müşteri panelinde bu tablo sipariş verilebilir olarak gösterilsin mi,
   // ve toptan birim fiyatı (KDV dahil/hariç notu Toptan Ayarlar'daki "fiyat notu"nda).
-  toptan_aktif: { type: Boolean, default: false },
+  toptan_aktif: { type: Boolean, default: false }, // eski alan - artık kullanılmıyor (yerine toptan_gizli)
+  toptan_gizli: { type: Boolean, default: false }, // true = Miras Sipariş Alanı'nda müşteriye gösterilmez
   toptan_fiyat: { type: Number, default: 0, min: 0 },
 }, { timestamps: true });
 

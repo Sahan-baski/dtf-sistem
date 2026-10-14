@@ -1,6 +1,7 @@
 // Toptan sipariş - müşteri ve yönetim panellerinin ortak parçaları.
 
 export const DURUMLAR = {
+  fiyat_bekliyor: { ad: 'Fiyat Bekleniyor', cls: 'badge-purple', ikon: 'ti-receipt' },
   odeme_bekliyor: { ad: 'Ödeme Bekleniyor', cls: 'badge-amber', ikon: 'ti-clock' },
   odendi:         { ad: 'Ödendi',           cls: 'badge-blue',  ikon: 'ti-cash' },
   hazirlaniyor:   { ad: 'Hazırlanıyor',     cls: 'badge-indigo', ikon: 'ti-package' },
@@ -85,7 +86,7 @@ export function proformaYazdir(sip, notlar = {}) {
   const tablolar = kalemMatrisi(sip.kalemler);
   const birimFiyat = new Map(sip.kalemler.map(k => [k.havuz_etiket, k.birim_fiyat]));
   const tabloHtml = tablolar.map(t => `
-    <h3>${esc(t.etiket)} <small>(birim ${esc(tl(birimFiyat.get(t.etiket)))})</small></h3>
+    <h3>${esc(t.etiket)} <small>(birim ${birimFiyat.get(t.etiket) > 0 ? esc(tl(birimFiyat.get(t.etiket))) : 'fiyat bildirilecek'})</small></h3>
     <table><thead><tr><th>Tasarım</th>${t.bedenler.map(b => `<th>${esc(b)}</th>`).join('')}<th>Toplam</th></tr></thead><tbody>
     ${t.urunler.map(u => `<tr><td>${esc(u.ad)}</td>${t.bedenler.map(b => { const h = u.hucreler[b]; return `<td class="c">${h ? `${h.stok || ''}${h.stok && h.on ? ' + ' : ''}${h.on ? h.on + ' ön' : ''}` : '–'}</td>`; }).join('')}<td class="c"><b>${Object.values(u.hucreler).reduce((s, h) => s + h.stok + h.on, 0)}</b></td></tr>`).join('')}
     </tbody></table>`).join('');
@@ -95,7 +96,7 @@ export function proformaYazdir(sip, notlar = {}) {
 table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left}th{background:#f3f4f6;font-size:12px}.c{text-align:center}
 .ust{display:flex;justify-content:space-between;gap:20px;margin-bottom:16px}.kutu{border:1px solid #ddd;border-radius:6px;padding:10px 12px;min-width:220px}.top td{border:none;padding:3px 0}.top{width:auto;margin-left:auto;margin-top:14px}
 .not{margin-top:18px;color:#444;font-size:12px}@media print{body{margin:10mm}}</style></head><body>
-<div class="ust"><div><h1>Miras &amp; Şahan — Toptan Sipariş</h1><div style="margin-top:6px">Sipariş No: <b>${esc(sip.siparis_no)}</b><br>Tarih: ${esc(tarih(sip.createdAt))}<br>Durum: ${esc((DURUMLAR[sip.durum] || {}).ad || sip.durum)} · Ödeme: ${sip.odeme && sip.odeme.odendi ? 'Ödendi' : 'Bekleniyor'}</div></div>
+<div class="ust"><div><h1>Miras &amp; Şahan — Miras Sipariş Alanı</h1><div style="margin-top:6px">Sipariş No: <b>${esc(sip.siparis_no)}</b><br>Tarih: ${esc(tarih(sip.createdAt))}<br>Durum: ${esc((DURUMLAR[sip.durum] || {}).ad || sip.durum)} · Ödeme: ${sip.odeme && sip.odeme.odendi ? 'Ödendi' : 'Bekleniyor'}</div></div>
 <div class="kutu"><b>${esc(t.firma || t.ad_soyad)}</b><br>${t.firma ? esc(t.ad_soyad) + '<br>' : ''}${esc(t.adres)} ${esc(t.il)}<br>${esc(t.telefon)} · ${esc(t.email)}${t.vergi_no ? '<br>VKN/TCKN: ' + esc(t.vergi_no) : ''}</div></div>
 ${tabloHtml}
 <table class="top"><tr><td>Stoktan:</td><td class="c"><b>${sip.stok_adet}</b> adet</td></tr><tr><td>Ön sipariş:</td><td class="c"><b>${sip.on_siparis_adet}</b> adet</td></tr>
@@ -103,7 +104,7 @@ ${tabloHtml}
 ${sip.kademe_indirim_orani ? `<tr><td>Adet indirimi (%${sip.kademe_indirim_orani}):</td><td class="c"></td></tr>` : ''}
 ${sip.musteri_indirim_orani ? `<tr><td>Müşteri indirimi (%${sip.musteri_indirim_orani}):</td><td class="c"></td></tr>` : ''}
 ${sip.indirim_tutari ? `<tr><td>Toplam indirim:</td><td class="c">-${esc(tl(sip.indirim_tutari))}</td></tr>` : ''}
-<tr><td><b>Genel toplam:</b></td><td class="c"><b>${esc(tl(sip.toplam))}</b></td></tr></table>
+<tr><td><b>Genel toplam:</b></td><td class="c"><b>${sip.durum === 'fiyat_bekliyor' ? 'Fiyat bildirilecek' : esc(tl(sip.toplam))}</b></td></tr></table>
 <div class="not">${esc(notlar.fiyat_notu || '')}${sip.on_siparis_adet ? `<br>Ön sipariş ürünleri ödeme sonrası üretime alınır${notlar.on_siparis_sure ? ' (tahmini ' + esc(notlar.on_siparis_sure) + ')' : ''}.` : ''}${sip.musteri_notu ? '<br>Not: ' + esc(sip.musteri_notu) : ''}</div>
 <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
   const w = window.open('', '_blank');

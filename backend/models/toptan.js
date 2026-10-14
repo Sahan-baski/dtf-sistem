@@ -39,7 +39,7 @@ const ToptanSiparisSchema = new Schema({
   toplam: { type: Number, default: 0 },
   durum: {
     type: String, default: 'odeme_bekliyor', index: true,
-    enum: ['odeme_bekliyor', 'odendi', 'hazirlaniyor', 'uretimde', 'kargoda', 'tamamlandi', 'iptal'],
+    enum: ['fiyat_bekliyor', 'odeme_bekliyor', 'odendi', 'hazirlaniyor', 'uretimde', 'kargoda', 'tamamlandi', 'iptal'],
   },
   odeme: {
     yontem: { type: String, enum: ['', 'paytr', 'havale'], default: '' },
@@ -50,6 +50,9 @@ const ToptanSiparisSchema = new Schema({
     paytr_tutar_kurus: Number,
     paytr_token_zamani: Date,
   },
+  // Fiyatı girilmemiş tablodan gelen siparişler 'fiyat_bekliyor' başlar; yönetici fiyatı
+  // bildirince 'odeme_bekliyor'a geçer ve ödeme süresi bu andan itibaren işler.
+  fiyat_verilme_tarihi: Date,
   stok_dusuldu: { type: Boolean, default: false },
   stok_iade_edildi: { type: Boolean, default: false },
   musteri_notu: String,

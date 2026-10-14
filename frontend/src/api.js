@@ -158,6 +158,7 @@ export const toptanApi = {
     guncelle: (id, d) => api.patch(`/toptan/admin/siparisler/${id}`, d),
     odendi: (id, yontem) => api.post(`/toptan/admin/siparisler/${id}/odendi`, { yontem }),
     iptal: (id, neden) => api.post(`/toptan/admin/siparisler/${id}/iptal`, { neden }),
+    fiyatVer: (id, fiyatlar, tabloya_kaydet) => api.post(`/toptan/admin/siparisler/${id}/fiyat`, { fiyatlar, tabloya_kaydet }),
     uretimListesi: () => api.get('/toptan/admin/uretim-listesi'),
     ayarlar: () => api.get('/toptan/admin/ayarlar'),
     ayarlariKaydet: (d) => api.put('/toptan/admin/ayarlar', d),

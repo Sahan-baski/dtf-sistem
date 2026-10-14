@@ -1,8 +1,11 @@
 /**
- * Müşteri panelindeki "Toptan Sipariş" bölümü.
- *  - Sipariş Ver: her stok tablosu bir matris (tasarım × beden). Her hücrede iki
- *    kutu var: yeşil = stoktan (beden sütununun stoğu dolunca o sütunun boş
- *    kutuları pasifleşir), turuncu = ön sipariş (stokta olmayan, üretilecek).
+ * Müşteri panelindeki "Miras Sipariş Alanı".
+ *  - Sipariş Ver: Stok Senkron'daki tabloların listesi; seçilen tablo iki ayrı
+ *    matris olarak açılır (tasarım × beden):
+ *      · Stoktan Sipariş (yeşil): eldeki stoktan; beden sütununun stoğu dolunca
+ *        o sütunun boş kutuları pasifleşir.
+ *      · Ön Sipariş / Üretim Talebi (turuncu): stokta olmayanlar, üretilecek.
+ *    Birden fazla tablodan seçilip tek siparişte gönderilebilir.
  *  - Siparişlerim: durum, ödeme, tekrar sipariş, proforma yazdırma.
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -122,8 +125,8 @@ export default function ToptanBolumu({ kullanici, toast }) {
     return (
       <div className="card" style={{ padding: 30, textAlign: 'center' }}>
         <i className="ti ti-lock" style={{ fontSize: 36, color: 'var(--text3)' }} />
-        <div style={{ fontSize: 16, fontWeight: 700, margin: '10px 0 6px' }}>Toptan sipariş hesabınızda henüz açık değil</div>
-        <div style={{ color: 'var(--text2)', fontSize: 14 }}>Toptan fiyatlarla sipariş verebilmek için hesabınızın yetkilendirilmesi gerekiyor. Lütfen bizimle iletişime geçin.</div>
+        <div style={{ fontSize: 16, fontWeight: 700, margin: '10px 0 6px' }}>Miras Sipariş Alanı bu hesapta kullanılamıyor</div>
+        <div style={{ color: 'var(--text2)', fontSize: 14 }}>{hata || 'Lütfen müşteri hesabınızla giriş yapın.'}</div>
       </div>
     );
   }
@@ -131,7 +134,7 @@ export default function ToptanBolumu({ kullanici, toast }) {
   return (
     <div>
       <div style={{ display: 'flex', background: 'var(--bg3)', borderRadius: 'var(--radius-sm)', padding: 4, gap: 2, marginBottom: 18, width: 'fit-content' }}>
-        {[['ver', 'Sipariş Ver', 'ti-table'], ['gecmis', `Toptan Siparişlerim${siparisler.length ? ` (${siparisler.length})` : ''}`, 'ti-list-details']].map(([k, ad, ikon]) => (
+        {[['ver', 'Sipariş Ver', 'ti-table'], ['gecmis', `Siparişlerim${siparisler.length ? ` (${siparisler.length})` : ''}`, 'ti-list-details']].map(([k, ad, ikon]) => (
           <button key={k} onClick={() => setSekme(k)}
             style={{ padding: '7px 16px', border: 'none', borderRadius: 'var(--radius-sm)', background: sekme === k ? 'var(--bg)' : 'none', color: sekme === k ? 'var(--text)' : 'var(--text2)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
             <i className={`ti ${ikon}`} />{ad}
@@ -158,19 +161,25 @@ export default function ToptanBolumu({ kullanici, toast }) {
   );
 }
 
-// ======================= Sipariş Ver (matris) =======================
+// ======================= Sipariş Ver (tablo listesi + matris) =======================
+
+const SECILI_TABLO = 'miras_alan_tablo';
 
 function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast, onYenile, onSiparisOlustu, onSiparislereGit }) {
   const { ayarlar } = katalog;
   const [tamamlaAcik, setTamamlaAcik] = useState(false);
+  const [mod, setMod] = useState('stok'); // 'stok' = stoktan sipariş, 'on' = ön sipariş / üretim talebi
+  const [aktifId, setAktifId] = useState(() => { try { return localStorage.getItem(SECILI_TABLO) || ''; } catch { return ''; } });
   const kul = useMemo(() => kullanim(miktar), [miktar, kullanim]);
+  const aktif = katalog.tablolar.find(t => String(t.id) === aktifId) || katalog.tablolar[0];
+  const tabloSec = (id) => { setAktifId(String(id)); try { localStorage.setItem(SECILI_TABLO, String(id)); } catch { /* yok say */ } };
 
   const ayarla = (uid, b, tip, deger) => {
     let n = Math.max(0, Math.min(9999, parseInt(deger, 10) || 0));
     if (tip === 'stok') {
       const max = stokMax(miktar, kul, uid, b);
       if (n > max) {
-        toast(`Bu hücrede stoktan en fazla ${max} adet seçebilirsiniz - fazlasını yandaki turuncu "ön sipariş" kutusuna yazın.`, 'error');
+        toast(`Bu hücrede stokta en fazla ${max} adet var - fazlası için "Ön Sipariş / Üretim Talebi" tablosunu kullanın.`, 'error');
         n = max;
       }
     }
@@ -181,30 +190,45 @@ function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast
     setMiktar(yeni);
   };
 
-  // "Seri" = her bedenden 1 adet. Stokta olan bedenler stoktan, olmayanlar ön sipariş olarak eklenir.
+  // "Seri" = her bedenden 1 adet. Stok tablosunda sadece stokta olan hücrelere, ön sipariş tablosunda her hücreye eklenir.
   const seriEkle = (urunIdler, bedenler) => {
     let m = { ...miktar };
-    let stoktan = 0, onden = 0;
+    let eklenen = 0, atlanan = 0;
     for (const uid of urunIdler) {
       for (const b of bedenler) {
         const k = hk(uid, b);
         const h = { ...(m[k] || { stok: 0, on: 0 }) };
-        if (stokMax(m, kullanim(m), uid, b) - h.stok >= 1) { h.stok += 1; stoktan++; } else { h.on += 1; onden++; }
+        if (mod === 'on') { h.on += 1; eklenen++; }
+        else if (stokMax(m, kullanim(m), uid, b) - h.stok >= 1) { h.stok += 1; eklenen++; }
+        else { atlanan++; continue; }
         m = { ...m, [k]: h };
       }
     }
     setMiktar(m);
-    toast(`${stoktan} adet stoktan${onden ? `, ${onden} adet ön sipariş olarak` : ''} eklendi`);
+    toast(`${eklenen} adet ${mod === 'on' ? 'ön siparişe' : 'stoktan'} eklendi${atlanan ? ` - stokta olmayan ${atlanan} hücre atlandı (ön sipariş tablosundan ekleyebilirsiniz)` : ''}`);
   };
 
-  // ----- Özet -----
-  const ozet = useMemo(() => {
-    let stok = 0, on = 0, ara = 0;
+  // Tablo bazında seçili adetler (kartlarda ve sekmelerde gösterilir)
+  const tabloSecimi = useMemo(() => {
+    const s = {};
     for (const [k, v] of Object.entries(miktar)) {
       const u = yapi.urunler.get(k.split('|')[0]);
       if (!u) continue;
+      const t = s[u.tablo.id] || (s[u.tablo.id] = { stok: 0, on: 0 });
+      t.stok += v.stok || 0; t.on += v.on || 0;
+    }
+    return s;
+  }, [miktar, yapi]);
+
+  // ----- Özet -----
+  const ozet = useMemo(() => {
+    let stok = 0, on = 0, ara = 0, fiyatsiz = 0;
+    for (const [k, v] of Object.entries(miktar)) {
+      const u = yapi.urunler.get(k.split('|')[0]);
+      if (!u) continue;
+      const adet = (v.stok || 0) + (v.on || 0);
       stok += v.stok || 0; on += v.on || 0;
-      ara += ((v.stok || 0) + (v.on || 0)) * u.tablo.birim_fiyat;
+      if (u.tablo.birim_fiyat > 0) ara += adet * u.tablo.birim_fiyat; else fiyatsiz += adet;
     }
     const adet = stok + on;
     const kademeler = ayarlar.kademeler || [];
@@ -213,32 +237,58 @@ function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast
     const iskonto = katalog.musteri.iskonto || 0;
     const toplam = Math.round(ara * (1 - kademe / 100) * (1 - iskonto / 100) * 100) / 100;
     const sorunlar = [];
-    if (stok > 0 && stok < ayarlar.min_stok_adet) sorunlar.push(`Stoktan en az ${ayarlar.min_stok_adet} adet - ${ayarlar.min_stok_adet - stok} adet daha ekleyin`);
-    if (on > 0 && on < ayarlar.min_on_siparis_adet) sorunlar.push(`Ön siparişte en az ${ayarlar.min_on_siparis_adet} adet - ${ayarlar.min_on_siparis_adet - on} adet daha ekleyin`);
-    return { stok, on, adet, ara, kademe, sonraki, iskonto, toplam, sorunlar, gecerli: adet > 0 && sorunlar.length === 0 };
+    if (stok > 0 && stok < ayarlar.min_stok_adet) sorunlar.push(`Stoktan siparişte en az ${ayarlar.min_stok_adet} adet - ${ayarlar.min_stok_adet - stok} adet daha ekleyin`);
+    if (on > 0 && on < ayarlar.min_on_siparis_adet) sorunlar.push(`Ön sipariş / üretim talebinde en az ${ayarlar.min_on_siparis_adet} adet - ${ayarlar.min_on_siparis_adet - on} adet daha ekleyin`);
+    return { stok, on, adet, ara, fiyatsiz, kademe, sonraki, iskonto, toplam, sorunlar, gecerli: adet > 0 && sorunlar.length === 0 };
   }, [miktar, yapi, ayarlar, katalog]);
 
   if (!katalog.tablolar.length) {
-    return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text2)' }}>Şu an toptan satışa açık ürün bulunmuyor.</div>;
+    return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text2)' }}>Şu an siparişe açık ürün bulunmuyor.</div>;
   }
+
+  const secim = tabloSecimi[aktif.id] || { stok: 0, on: 0 };
 
   return (
     <div>
-      <div className="card" style={{ padding: '14px 18px', marginBottom: 16, fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
-        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 6 }}>
-          <span><Kutucuk renk="var(--green)" /> <b style={{ color: 'var(--text)' }}>Stoktan</b> — elde hazır, ödeme sonrası hemen gönderilir, en az {ayarlar.min_stok_adet} adet</span>
-          <span><Kutucuk renk="var(--amber)" /> <b style={{ color: 'var(--text)' }}>Ön sipariş</b> — stokta olmayanlar üretilir{ayarlar.on_siparis_sure ? ` (${ayarlar.on_siparis_sure})` : ''}, en az {ayarlar.min_on_siparis_adet} adet</span>
-        </div>
-        Bir bedenin stoğu dolduğunda o sütunun yeşil kutuları kapanır, turuncu kutularla ön sipariş vermeye devam edebilirsiniz.
-        {(ayarlar.kademeler || []).length > 0 && <> Adet indirimi: {ayarlar.kademeler.map(k => `${k.adet}+ adette %${k.indirim}`).join(', ')}.</>}
-        {katalog.musteri.iskonto > 0 && <> Size özel ek indirim: <b style={{ color: 'var(--green)' }}>%{katalog.musteri.iskonto}</b>.</>}
-        {ayarlar.fiyat_notu && <> {ayarlar.fiyat_notu}</>}
+      {/* Tablo listesi */}
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', margin: '0 0 8px' }}>Ürün tabloları ({katalog.tablolar.length})</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginBottom: 18 }}>
+        {katalog.tablolar.map(t => {
+          const secili = String(t.id) === String(aktif.id);
+          const stokToplam = t.bedenler.reduce((s, b) => s + (t.stoklar[b] || 0), 0);
+          const sec = tabloSecimi[t.id];
+          return (
+            <button key={t.id} onClick={() => tabloSec(t.id)}
+              style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 'var(--r-sm, 10px)', cursor: 'pointer', background: secili ? 'color-mix(in srgb, var(--indigo) 8%, var(--bg))' : 'var(--bg)', border: `1.5px solid ${secili ? 'var(--indigo)' : 'var(--border2)'}`, color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.3 }}>{t.etiket}</span>
+              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t.urunler.length} tasarım · {t.bedenler.length} beden · <b style={{ color: stokToplam ? 'var(--green)' : 'var(--text3)' }}>{stokToplam} stokta</b></span>
+              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t.birim_fiyat > 0 ? <>Birim fiyat <b style={{ color: 'var(--text)' }}>{tl(t.birim_fiyat)}</b></> : <span style={{ color: 'var(--purple, #7e22ce)' }}>Fiyat sipariş sonrası bildirilir</span>}</span>
+              {sec && (sec.stok + sec.on) > 0 && (
+                <span style={{ fontSize: 11.5, fontWeight: 700 }}>
+                  Seçili: {sec.stok > 0 && <span style={{ color: 'var(--green)' }}>{sec.stok} stoktan</span>}{sec.stok > 0 && sec.on > 0 && ' · '}{sec.on > 0 && <span style={{ color: 'var(--amber)' }}>{sec.on} ön sipariş</span>}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {katalog.tablolar.map(t => (
-        <MatrisTablosu key={t.id} tablo={t} katalog={katalog} miktar={miktar} kul={kul} stokMax={stokMax}
-          ayarla={ayarla} seriEkle={seriEkle} />
-      ))}
+      {/* Stoktan / Ön sipariş seçimi */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 12 }}>
+        <ModSekmesi aktif={mod === 'stok'} renk="var(--green)" ikon="ti-package" onClick={() => setMod('stok')}
+          baslik="Stoktan Sipariş" alt={`Eldeki stoktan · en az ${ayarlar.min_stok_adet} adet · ödeme sonrası hemen gönderilir`} adet={secim.stok} />
+        <ModSekmesi aktif={mod === 'on'} renk="var(--amber)" ikon="ti-tools" onClick={() => setMod('on')}
+          baslik="Ön Sipariş / Üretim Talebi" alt={`Stokta olmayanlar üretilir · en az ${ayarlar.min_on_siparis_adet} adet${ayarlar.on_siparis_sure ? ` · ${ayarlar.on_siparis_sure}` : ''}`} adet={secim.on} />
+      </div>
+
+      <MatrisTablosu key={`${aktif.id}|${mod}`} tablo={aktif} mod={mod} miktar={miktar} kul={kul} stokMax={stokMax}
+        ayarla={ayarla} seriEkle={seriEkle} onModDegis={setMod} />
+
+      <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.6, margin: '-6px 0 14px' }}>
+        {(ayarlar.kademeler || []).length > 0 && <>Adet indirimi (tüm tablolar toplamı): {ayarlar.kademeler.map(k => `${k.adet}+ adette %${k.indirim}`).join(', ')}. </>}
+        {katalog.musteri.iskonto > 0 && <>Size özel ek indirim: <b style={{ color: 'var(--green)' }}>%{katalog.musteri.iskonto}</b>. </>}
+        {ayarlar.fiyat_notu}
+      </div>
 
       {/* Yapışkan özet çubuğu */}
       <div style={{ position: 'sticky', bottom: 0, zIndex: 20, marginTop: 10 }}>
@@ -249,18 +299,19 @@ function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast
             {ozet.adet > 0 ? (
               <>
                 <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--text)' }}>
-                  {tl(ozet.toplam)}
-                  {ozet.toplam < ozet.ara && <span style={{ fontSize: 13, color: 'var(--text3)', textDecoration: 'line-through', marginLeft: 8, fontWeight: 400 }}>{tl(ozet.ara)}</span>}
+                  {ozet.ara > 0 ? tl(ozet.toplam) : 'Fiyat bildirilecek'}
+                  {ozet.ara > 0 && ozet.toplam < ozet.ara && <span style={{ fontSize: 13, color: 'var(--text3)', textDecoration: 'line-through', marginLeft: 8, fontWeight: 400 }}>{tl(ozet.ara)}</span>}
+                  {ozet.ara > 0 && ozet.fiyatsiz > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}> + {ozet.fiyatsiz} adedin fiyatı bildirilecek</span>}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text2)' }}>
                   {ozet.kademe > 0 && `%${ozet.kademe} adet indirimi `}{ozet.iskonto > 0 && `· %${ozet.iskonto} size özel `}
                   {ozet.sonraki && <span style={{ color: 'var(--green)' }}>· {ozet.sonraki.adet - ozet.adet} adet daha ekleyin, %{ozet.sonraki.indirim} indirim kazanın</span>}
                 </div>
               </>
-            ) : <div style={{ fontSize: 13, color: 'var(--text3)' }}>Tablodaki kutulara adet yazarak siparişinizi oluşturun.</div>}
+            ) : <div style={{ fontSize: 13, color: 'var(--text3)' }}>Tablodaki kutulara adet yazarak siparişinizi oluşturun. Birden fazla tablodan seçebilirsiniz.</div>}
             {ozet.sorunlar.map(s => <div key={s} style={{ fontSize: 12, color: 'var(--red)', marginTop: 2 }}>• {s}</div>)}
           </div>
-          {ozet.adet > 0 && <button className="btn btn-secondary btn-sm" onClick={() => { if (confirm('Tablodaki tüm adetler silinsin mi?')) setMiktar({}); }}>Temizle</button>}
+          {ozet.adet > 0 && <button className="btn btn-secondary btn-sm" onClick={() => { if (confirm('Tüm tablolardaki adetler silinsin mi?')) setMiktar({}); }}>Temizle</button>}
           <button className="btn btn-primary" disabled={!ozet.gecerli} onClick={() => setTamamlaAcik(true)}>
             <i className="ti ti-arrow-right" />Siparişi Tamamla
           </button>
@@ -279,8 +330,19 @@ function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast
   );
 }
 
-function Kutucuk({ renk }) {
-  return <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, border: `2px solid ${renk}`, verticalAlign: -1 }} />;
+function ModSekmesi({ aktif, renk, ikon, baslik, alt, adet, onClick }) {
+  return (
+    <button onClick={onClick}
+      style={{ textAlign: 'left', padding: '11px 14px', borderRadius: 'var(--r-sm, 10px)', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center',
+        border: `2px solid ${aktif ? renk : 'var(--border2)'}`, background: aktif ? `color-mix(in srgb, ${renk} 9%, var(--bg))` : 'var(--bg)', color: 'var(--text)' }}>
+      <i className={`ti ${ikon}`} style={{ fontSize: 22, color: renk }} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontWeight: 800, fontSize: 14 }}>{baslik}</span>
+        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text2)' }}>{alt}</span>
+      </span>
+      {adet > 0 && <span style={{ background: renk, color: '#fff', borderRadius: 999, padding: '1px 9px', fontSize: 12, fontWeight: 800 }}>{adet}</span>}
+    </button>
+  );
 }
 
 function OzetSayaci({ ad, adet, min, renk }) {
@@ -293,38 +355,52 @@ function OzetSayaci({ ad, adet, min, renk }) {
   );
 }
 
-function MatrisTablosu({ tablo, katalog, miktar, kul, stokMax, ayarla, seriEkle }) {
+function MatrisTablosu({ tablo, mod, miktar, kul, stokMax, ayarla, seriEkle, onModDegis }) {
   const { bedenler } = tablo;
-  const sutunToplam = (b, tip) => tablo.urunler.reduce((s, u) => s + ((miktar[hk(u.id, b)] || {})[tip] || 0), 0);
+  const stokModu = mod === 'stok';
+  const tip = stokModu ? 'stok' : 'on';
+  const renk = stokModu ? 'var(--green)' : 'var(--amber)';
+  const sutunToplam = (b) => tablo.urunler.reduce((s, u) => s + ((miktar[hk(u.id, b)] || {})[tip] || 0), 0);
   const kalan = (b) => (tablo.stoklar[b] || 0) - (kul.sutun[`${tablo.id}|${b}`] || 0);
   const stilTd = { padding: '6px 5px', borderBottom: '1px solid var(--border)', textAlign: 'center' };
   const solYapiskan = { position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1 };
+  const hicStokYok = stokModu && bedenler.every(b => !(tablo.stoklar[b] > 0));
 
   return (
-    <div className="card" style={{ padding: 0, marginBottom: 20, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', flexWrap: 'wrap', gap: 10, borderBottom: '1px solid var(--border)' }}>
+    <div className="card" style={{ padding: 0, marginBottom: 20, overflow: 'hidden', borderTop: `3px solid ${renk}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', flexWrap: 'wrap', gap: 10, borderBottom: '1px solid var(--border)' }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 800 }}>{tablo.etiket}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>Toptan birim fiyat: <b style={{ color: 'var(--text)' }}>{tl(tablo.birim_fiyat)}</b> · {tablo.urunler.length} tasarım</div>
+          <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>
+            <b style={{ color: renk }}>{stokModu ? 'Stoktan sipariş' : 'Ön sipariş / üretim talebi'}</b> · {tablo.urunler.length} tasarım ·{' '}
+            {tablo.birim_fiyat > 0 ? <>birim fiyat <b style={{ color: 'var(--text)' }}>{tl(tablo.birim_fiyat)}</b></> : 'fiyat sipariş sonrası bildirilir'}
+          </div>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={() => seriEkle(tablo.urunler.map(u => String(u.id)), bedenler)}
-          title="Bu tablodaki her tasarımdan, her bedenden 1'er adet ekler">
+          title={stokModu ? 'Her tasarımdan, stokta olan her bedenden 1\'er adet ekler' : 'Her tasarımdan, her bedenden 1\'er adet üretim talebi ekler'}>
           <i className="ti ti-stack-push" />Tüm tasarımlara +1 seri
         </button>
       </div>
+      {hicStokYok && (
+        <div style={{ padding: '10px 18px', fontSize: 13, background: 'rgba(217,119,6,0.08)', color: 'var(--text2)' }}>
+          Bu tabloda şu an stok yok. <button onClick={() => onModDegis('on')} style={{ border: 'none', background: 'none', color: 'var(--amber)', fontWeight: 700, cursor: 'pointer', padding: 0 }}>Ön sipariş / üretim talebi oluşturun →</button>
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 180 + bedenler.length * 92 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 180 + bedenler.length * 84 }}>
           <thead>
             <tr style={{ background: 'var(--bg2)' }}>
               <th style={{ ...stilTd, ...solYapiskan, background: 'var(--bg2)', textAlign: 'left', minWidth: 190, fontSize: 12, color: 'var(--text3)' }}>Tasarım</th>
               {bedenler.map(b => {
                 const k = kalan(b);
                 return (
-                  <th key={b} style={{ ...stilTd, minWidth: 86, background: k <= 0 ? 'rgba(217,119,6,0.08)' : undefined }}>
+                  <th key={b} style={{ ...stilTd, minWidth: 78, background: stokModu && k <= 0 ? 'rgba(217,119,6,0.08)' : undefined }}>
                     <div style={{ fontSize: 13, fontWeight: 800 }}>{b}</div>
-                    <div style={{ fontSize: 10.5, fontWeight: 500, color: k <= 0 ? 'var(--amber)' : 'var(--text3)' }}>
-                      {k <= 0 ? (tablo.stoklar[b] > 0 ? 'stok doldu' : 'stokta yok') : `stokta ${k} kaldı`}
-                    </div>
+                    {stokModu && (
+                      <div style={{ fontSize: 10.5, fontWeight: 500, color: k <= 0 ? 'var(--amber)' : 'var(--text3)' }}>
+                        {k <= 0 ? (tablo.stoklar[b] > 0 ? 'stok doldu' : 'stokta yok') : `stokta ${k} kaldı`}
+                      </div>
+                    )}
                   </th>
                 );
               })}
@@ -334,7 +410,7 @@ function MatrisTablosu({ tablo, katalog, miktar, kul, stokMax, ayarla, seriEkle 
           <tbody>
             {tablo.urunler.map(u => {
               const uid = String(u.id);
-              const satirToplam = bedenler.reduce((s, b) => { const h = miktar[hk(uid, b)]; return s + (h ? h.stok + h.on : 0); }, 0);
+              const satirToplam = bedenler.reduce((s, b) => s + ((miktar[hk(uid, b)] || {})[tip] || 0), 0);
               return (
                 <tr key={uid}>
                   <td style={{ ...stilTd, ...solYapiskan, textAlign: 'left' }}>
@@ -350,56 +426,64 @@ function MatrisTablosu({ tablo, katalog, miktar, kul, stokMax, ayarla, seriEkle 
                   </td>
                   {bedenler.map(b => {
                     const h = miktar[hk(uid, b)] || { stok: 0, on: 0 };
+                    if (!stokModu) {
+                      return (
+                        <td key={b} style={stilTd}>
+                          <HucreGirdisi deger={h.on} renk={renk} baslik="Üretim talebi (adet)" onChange={v => ayarla(uid, b, 'on', v)} />
+                          {h.stok > 0 && <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 2 }}>+{h.stok} stoktan</div>}
+                        </td>
+                      );
+                    }
                     const max = stokMax(miktar, kul, uid, b);
-                    const stokPasif = max <= 0 && !h.stok;
+                    const pasif = max <= 0 && !h.stok;
                     return (
                       <td key={b} style={{ ...stilTd, background: kalan(b) <= 0 ? 'rgba(217,119,6,0.04)' : undefined }}>
-                        <HucreGirdisi deger={h.stok} renk="var(--green)" pasif={stokPasif}
-                          baslik={stokPasif ? (kalan(b) > 0 ? 'Bu tasarımın baskı stoğu doldu - ön sipariş kutusunu kullanın' : 'Bu bedende stok kalmadı - ön sipariş kutusunu kullanın') : `Stoktan (en fazla ${max})`}
+                        <HucreGirdisi deger={h.stok} renk={renk} pasif={pasif}
+                          baslik={pasif ? (kalan(b) > 0 ? 'Bu tasarımın baskı stoğu doldu - ön sipariş tablosunu kullanın' : 'Bu bedende stok kalmadı - ön sipariş tablosunu kullanın') : `Stoktan (en fazla ${max})`}
                           onChange={v => ayarla(uid, b, 'stok', v)} />
-                        <HucreGirdisi deger={h.on} renk="var(--amber)" kucuk yerTutucu="ön"
-                          baslik="Ön sipariş (üretilecek)" onChange={v => ayarla(uid, b, 'on', v)} />
+                        <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
+                          {pasif ? 'yok' : `en fazla ${max}`}{h.on > 0 && <span style={{ color: 'var(--amber)' }}> · +{h.on} ön</span>}
+                        </div>
                       </td>
                     );
                   })}
-                  <td style={{ ...stilTd, fontWeight: 800 }}>{satirToplam || ''}</td>
+                  <td style={{ ...stilTd, fontWeight: 800, color: satirToplam ? renk : undefined }}>{satirToplam || ''}</td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr style={{ background: 'var(--bg2)', fontSize: 12 }}>
-              <td style={{ ...stilTd, ...solYapiskan, background: 'var(--bg2)', textAlign: 'left', color: 'var(--text2)' }}>Seçilen (stok / ön)</td>
-              {bedenler.map(b => (
-                <td key={b} style={stilTd}>
-                  <span style={{ color: 'var(--green)', fontWeight: 700 }}>{sutunToplam(b, 'stok')}</span>
-                  <span style={{ color: 'var(--text3)' }}> / </span>
-                  <span style={{ color: 'var(--amber)', fontWeight: 700 }}>{sutunToplam(b, 'on')}</span>
-                </td>
-              ))}
-              <td style={{ ...stilTd, fontWeight: 800 }}>{bedenler.reduce((s, b) => s + sutunToplam(b, 'stok') + sutunToplam(b, 'on'), 0) || ''}</td>
+              <td style={{ ...stilTd, ...solYapiskan, background: 'var(--bg2)', textAlign: 'left', color: 'var(--text2)' }}>Seçilen</td>
+              {bedenler.map(b => <td key={b} style={{ ...stilTd, color: renk, fontWeight: 700 }}>{sutunToplam(b) || ''}</td>)}
+              <td style={{ ...stilTd, fontWeight: 800, color: renk }}>{bedenler.reduce((s, b) => s + sutunToplam(b), 0) || ''}</td>
             </tr>
           </tfoot>
         </table>
       </div>
+      {stokModu && !hicStokYok && (
+        <div style={{ padding: '8px 18px', fontSize: 12, color: 'var(--text3)', borderTop: '1px solid var(--border)' }}>
+          Bir bedenin stoğu dolunca o sütun kapanır. Stokta olmayan ya da yetmeyen ürünler için{' '}
+          <button onClick={() => onModDegis('on')} style={{ border: 'none', background: 'none', color: 'var(--amber)', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12 }}>Ön Sipariş / Üretim Talebi</button> tablosunu kullanın.
+        </div>
+      )}
     </div>
   );
 }
 
-function HucreGirdisi({ deger, renk, pasif, kucuk, yerTutucu, baslik, onChange }) {
+function HucreGirdisi({ deger, renk, pasif, baslik, onChange }) {
   return (
     <input
       type="number" min="0" inputMode="numeric"
-      value={deger || ''} placeholder={pasif ? '—' : (yerTutucu || '0')} disabled={pasif} title={baslik} aria-label={baslik}
+      value={deger || ''} placeholder={pasif ? '—' : '0'} disabled={pasif} title={baslik} aria-label={baslik}
       onChange={e => onChange(e.target.value)}
       onFocus={e => e.target.select()}
       style={{
-        width: '100%', maxWidth: 70, display: 'block', margin: kucuk ? '4px auto 0' : '0 auto',
-        padding: kucuk ? '3px 4px' : '6px 4px', fontSize: kucuk ? 12 : 14, fontWeight: 700, textAlign: 'center',
+        width: '100%', maxWidth: 64, display: 'block', margin: '0 auto',
+        padding: '6px 4px', fontSize: 14, fontWeight: 700, textAlign: 'center',
         border: `1.5px solid ${pasif ? 'var(--border)' : renk}`, borderRadius: 7,
-        background: pasif ? 'var(--bg3)' : deger ? `color-mix(in srgb, ${renk} 10%, white)` : 'var(--bg)',
+        background: pasif ? 'var(--bg3)' : deger ? `color-mix(in srgb, ${renk} 12%, var(--bg))` : 'var(--bg)',
         color: pasif ? 'var(--text3)' : 'var(--text)', cursor: pasif ? 'not-allowed' : 'text',
-        opacity: kucuk && !deger ? 0.75 : 1,
       }}
     />
   );
@@ -454,10 +538,11 @@ function SiparisTamamlaModal({ katalog, yapi, miktar, ozet, toast, onKapat, onOl
           <>
             <div style={{ background: 'var(--bg2)', borderRadius: 'var(--r-xs)', padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Stoktan</span><b>{ozet.stok} adet</b></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Ön sipariş</span><b>{ozet.on} adet</b></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Ara toplam</span><span>{tl(ozet.ara)}</span></div>
-              {ozet.toplam < ozet.ara && <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--green)' }}><span>İndirim</span><span>-{tl(ozet.ara - ozet.toplam)}</span></div>}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, marginTop: 4 }}><b>Toplam</b><b>{tl(ozet.toplam)}</b></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Ön sipariş / üretim talebi</span><b>{ozet.on} adet</b></div>
+              {ozet.ara > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Ara toplam</span><span>{tl(ozet.ara)}</span></div>}
+              {ozet.ara > 0 && ozet.toplam < ozet.ara && <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--green)' }}><span>İndirim</span><span>-{tl(ozet.ara - ozet.toplam)}</span></div>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, marginTop: 4 }}><b>Toplam</b><b>{ozet.fiyatsiz > 0 ? (ozet.ara > 0 ? `${tl(ozet.toplam)} + bildirilecek` : 'Fiyat bildirilecek') : tl(ozet.toplam)}</b></div>
+              {ozet.fiyatsiz > 0 && <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 2 }}>{ozet.fiyatsiz} adedin fiyatı siparişiniz incelendikten sonra size bildirilecek.</div>}
               {ayarlar.fiyat_notu && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{ayarlar.fiyat_notu}</div>}
             </div>
 
@@ -480,7 +565,7 @@ function SiparisTamamlaModal({ katalog, yapi, miktar, ozet, toast, onKapat, onOl
               <textarea className="form-input" rows={2} value={not} onChange={e => setNot(e.target.value)} placeholder="İsteğe bağlı" />
             </div>
 
-            <BilgiKutusu ayarlar={ayarlar} stokVar={ozet.stok > 0} onVar={ozet.on > 0} />
+            <BilgiKutusu ayarlar={ayarlar} stokVar={ozet.stok > 0} onVar={ozet.on > 0} fiyatsiz={ozet.fiyatsiz > 0} />
 
             {hata && <div style={{ whiteSpace: 'pre-line', color: 'var(--red)', fontSize: 13, background: 'rgba(220,38,38,0.07)', padding: '8px 12px', borderRadius: 'var(--r-xs)', marginTop: 12 }}>{hata}</div>}
 
@@ -492,19 +577,34 @@ function SiparisTamamlaModal({ katalog, yapi, miktar, ozet, toast, onKapat, onOl
             </div>
           </>
         ) : (
-          <OdemePaneli siparis={siparis} ayarlar={ayarlar} toast={toast} onGuncellendi={s => s && setSiparis(s)} />
+          siparis.durum === 'fiyat_bekliyor' ? <FiyatBekliyorMesaji siparis={siparis} /> : <OdemePaneli siparis={siparis} ayarlar={ayarlar} toast={toast} onGuncellendi={s => s && setSiparis(s)} />
         )}
       </div>
     </div>
   );
 }
 
-function BilgiKutusu({ ayarlar, stokVar, onVar }) {
+function BilgiKutusu({ ayarlar, stokVar, onVar, fiyatsiz }) {
   return (
     <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.6, background: 'rgba(37,99,235,0.06)', borderRadius: 'var(--r-xs)', padding: '10px 14px' }}>
       <div>ℹ️ <b>Siparişiniz ödeme alındıktan sonra hazırlanmaya başlanacaktır.</b></div>
-      {stokVar && ayarlar.odeme_sure_saat > 0 && <div>Stoktan seçtiğiniz ürünler sipariş anında sizin için ayrılır; {ayarlar.odeme_sure_saat} saat içinde ödenmeyen siparişler iptal edilir ve stok serbest kalır.</div>}
+      {fiyatsiz && <div>Bazı ürünlerin fiyatı sipariş sonrası bildirilecek. Fiyat bildirildiğinde "Siparişlerim" sekmesinden ödeme yapabilirsiniz.</div>}
+      {stokVar && <div>Stoktan seçtiğiniz ürünler sipariş anında sizin için ayrılır{ayarlar.odeme_sure_saat > 0 ? `; ödemeye açıldıktan sonra ${ayarlar.odeme_sure_saat} saat içinde ödenmeyen siparişler iptal edilir ve stok serbest kalır` : ''}.</div>}
       {onVar && <div>Ön sipariş ürünleri ödeme sonrası üretime alınır{ayarlar.on_siparis_sure ? ` (tahmini ${ayarlar.on_siparis_sure})` : ''}.</div>}
+    </div>
+  );
+}
+
+function FiyatBekliyorMesaji({ siparis }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+      <div style={{ fontSize: 40 }}>🧾</div>
+      <div style={{ fontSize: 16, fontWeight: 700, margin: '6px 0' }}>Siparişiniz alındı - fiyat bildirilecek</div>
+      <div style={{ color: 'var(--text2)', fontSize: 13.5, lineHeight: 1.6 }}>
+        Sipariş no <b>{siparis.siparis_no}</b>. Siparişinizi inceleyip fiyatı en kısa sürede bildireceğiz.
+        Fiyat bildirildiğinde "Siparişlerim" sekmesinden ödeme yapabilirsiniz; siparişiniz ödeme alındıktan sonra hazırlanmaya başlanacaktır.
+        {siparis.stok_adet > 0 && <> Stoktan seçtiğiniz {siparis.stok_adet} adet sizin için ayrıldı.</>}
+      </div>
     </div>
   );
 }
@@ -546,7 +646,7 @@ function OdemePaneli({ siparis, ayarlar, toast, onGuncellendi }) {
       <div style={{ textAlign: 'center', padding: '20px 10px' }}>
         <div style={{ fontSize: 40 }}>✅</div>
         <div style={{ fontSize: 16, fontWeight: 700, margin: '6px 0' }}>Ödemeniz alındı</div>
-        <div style={{ color: 'var(--text2)', fontSize: 13.5 }}>Siparişiniz {siparis.siparis_no} hazırlanmak üzere sıraya alındı. Durumunu "Toptan Siparişlerim" sekmesinden takip edebilirsiniz.</div>
+        <div style={{ color: 'var(--text2)', fontSize: 13.5 }}>Siparişiniz {siparis.siparis_no} hazırlanmak üzere sıraya alındı. Durumunu "Siparişlerim" sekmesinden takip edebilirsiniz.</div>
       </div>
     );
   }
@@ -591,7 +691,7 @@ function Siparislerim({ siparisler, ayarlar, toast, onYenile, onTekrar }) {
   const [odemeSiparisi, setOdemeSiparisi] = useState(null);
 
   if (!siparisler.length) {
-    return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text3)' }}><i className="ti ti-list-details" style={{ fontSize: 36, display: 'block', marginBottom: 8 }} />Henüz toptan siparişiniz yok.</div>;
+    return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text3)' }}><i className="ti ti-list-details" style={{ fontSize: 36, display: 'block', marginBottom: 8 }} />Henüz siparişiniz yok.</div>;
   }
 
   const iptal = async (s) => {
@@ -604,6 +704,7 @@ function Siparislerim({ siparisler, ayarlar, toast, onYenile, onTekrar }) {
     <div>
       {siparisler.map(s => {
         const odenmedi = s.durum === 'odeme_bekliyor' && !s.odeme?.odendi;
+        const fiyatBekliyor = s.durum === 'fiyat_bekliyor';
         return (
           <div key={s._id} className="card" style={{ padding: '14px 18px', marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', cursor: 'pointer' }} onClick={() => setAcik(acik === s._id ? null : s._id)}>
@@ -618,24 +719,27 @@ function Siparislerim({ siparisler, ayarlar, toast, onYenile, onTekrar }) {
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 17, fontWeight: 800 }}>{tl(s.toplam)}</div>
+                <div style={{ fontSize: 17, fontWeight: 800 }}>{fiyatBekliyor ? 'Fiyat bekleniyor' : tl(s.toplam)}</div>
                 <div style={{ fontSize: 12, color: odenmedi ? 'var(--amber)' : 'var(--text3)' }}>{odenmedi ? 'Ödeme bekleniyor' : s.odeme?.odendi ? 'Ödendi' : ''}</div>
               </div>
             </div>
             {odenmedi && (
               <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 8 }}>Siparişiniz ödeme alındıktan sonra hazırlanacaktır.</div>
             )}
+            {fiyatBekliyor && (
+              <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 8 }}>Siparişiniz alındı, fiyat en kısa sürede bildirilecek. Fiyat bildirilince buradan ödeme yapabilirsiniz.</div>
+            )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
               {odenmedi && <button className="btn btn-primary btn-sm" onClick={() => setOdemeSiparisi(s)}><i className="ti ti-credit-card" />Öde</button>}
               <button className="btn btn-secondary btn-sm" onClick={() => onTekrar(s)}><i className="ti ti-repeat" />Tekrar Sipariş Ver</button>
               <button className="btn btn-secondary btn-sm" onClick={() => proformaYazdir(s, ayarlar || {})}><i className="ti ti-printer" />Yazdır</button>
-              {odenmedi && <button className="btn btn-secondary btn-sm" onClick={() => iptal(s)} style={{ color: 'var(--red)' }}><i className="ti ti-x" />İptal Et</button>}
+              {(odenmedi || fiyatBekliyor) && <button className="btn btn-secondary btn-sm" onClick={() => iptal(s)} style={{ color: 'var(--red)' }}><i className="ti ti-x" />İptal Et</button>}
             </div>
             {acik === s._id && (
               <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
                 <SiparisMatrisi kalemler={s.kalemler} />
                 <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>
-                  Ara toplam {tl(s.ara_toplam)}{s.indirim_tutari > 0 && ` · indirim -${tl(s.indirim_tutari)}`} · <b style={{ color: 'var(--text)' }}>Toplam {tl(s.toplam)}</b>
+                  {fiyatBekliyor ? 'Fiyat bildirilecek' : <>Ara toplam {tl(s.ara_toplam)}{s.indirim_tutari > 0 && ` · indirim -${tl(s.indirim_tutari)}`} · <b style={{ color: 'var(--text)' }}>Toplam {tl(s.toplam)}</b></>}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
                   {(s.gecmis || []).slice().reverse().map((g, i) => <div key={i}>{tarih(g.tarih)} — {g.olay}</div>)}
