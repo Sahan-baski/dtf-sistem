@@ -299,6 +299,11 @@ async function siparisOlustur(kullanici, { kalemler, teslimat, musteri_notu }) {
     if (fiyat.stok_adet > 0 && fiyat.stok_adet < ayar.min_stok_adet) throw new KullaniciHatasi(`Stoktan siparişte en az ${ayar.min_stok_adet} adet olmalı (şu an ${fiyat.stok_adet}).`);
     if (fiyat.on_siparis_adet > 0 && fiyat.on_siparis_adet < ayar.min_on_siparis_adet) throw new KullaniciHatasi(`Ön siparişte en az ${ayar.min_on_siparis_adet} adet olmalı (şu an ${fiyat.on_siparis_adet}).`);
     const tes = teslimatDogrula(teslimat);
+    // Stok kilitleme kötüye kullanımına karşı: bir müşterinin aynı anda en fazla 3 ödenmemiş siparişi olabilir.
+    if (kullanici.rol !== 'admin') {
+      const acik = await ToptanSiparis.countDocuments({ musteri_id: kullanici._id, durum: { $in: ['fiyat_bekliyor', 'odeme_bekliyor'] }, 'odeme.odendi': false });
+      if (acik >= 3) throw new KullaniciHatasi('Ödenmemiş 3 siparişiniz var. Yeni sipariş için önce onlardan birini ödeyin ya da iptal edin.');
+    }
     const fiyatsiz = [...new Set(temiz.filter(k => !(k.birim_fiyat > 0)).map(k => k.havuz_etiket))];
 
     const sip = await ToptanSiparis.create({

@@ -26,8 +26,10 @@ const SAYILAN_DURUMLAR = ['processing', 'completed'];
 function imzaGecerliMi(req) {
   const gizliAnahtar = process.env.WC_WEBHOOK_SECRET;
   if (!gizliAnahtar) {
-    console.warn('[StokSenkron/Webhook] WC_WEBHOOK_SECRET ayarlanmamış - imza doğrulaması ATLANIYOR (güvenli değil, lütfen ayarlayın).');
-    return true;
+    // Eskiden imza kontrolü bu durumda ATLANIYORDU - yani adresi bilen herkes sahte
+    // "sipariş geldi" isteğiyle stokları düşürebiliyordu. Artık anahtar yoksa reddedilir.
+    console.error('[StokSenkron/Webhook] WC_WEBHOOK_SECRET ayarlanmamış - webhook REDDEDİLDİ. Render → Environment\'a ekleyin.');
+    return false;
   }
   const gelenImza = req.headers['x-wc-webhook-signature'];
   if (!gelenImza || !req.rawBody) return false;

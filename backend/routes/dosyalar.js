@@ -3,11 +3,17 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { Dosya } = require('../models');
+const { sadeceEkip } = require('../middleware/rol');
 const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname,'../uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir,{recursive:true});
-const storage = multer.diskStorage({ destination:(req,file,cb)=>cb(null,uploadDir), filename:(req,file,cb)=>cb(null,Date.now()+'-'+file.originalname) });
+// Dosya adı tahmin edilemez rastgele bir isim (orijinal ad veritabanında saklanıyor).
+const storage = multer.diskStorage({ destination:(req,file,cb)=>cb(null,uploadDir), filename:(req,file,cb)=>cb(null,crypto.randomUUID()+(path.extname(file.originalname).replace(/[^.A-Za-z0-9]/g,'').slice(0,10))) });
 const upload = multer({storage,limits:{fileSize:20*1024*1024}});
+// ÖNEMLİ: eskiden rol kontrolü yoktu - müşteri hesapları her siparişin dosyalarını
+// listeleyip indirebiliyor/silebiliyordu. Sipariş dosyaları sadece ekibe (admin/çalışan) açık.
+router.use(sadeceEkip);
 router.get('/:siparis_id', async (req,res) => { try { res.json(await Dosya.find({siparis_id:req.params.siparis_id})); } catch(e){res.status(500).json({hata:e.message});} });
 router.post('/yukle/:siparis_id', upload.single('dosya'), async (req,res) => { try { if(!req.file)return res.status(400).json({hata:'Dosya yok'}); const d=await Dosya.create({siparis_id:req.params.siparis_id,orijinal_ad:req.file.originalname,dosya_adi:req.file.filename,boyut:req.file.size,mime:req.file.mimetype,yuklenme:new Date().toISOString()}); res.status(201).json(d); } catch(e){res.status(500).json({hata:e.message});} });
 router.get('/indir/:dosya_adi', (req,res) => {

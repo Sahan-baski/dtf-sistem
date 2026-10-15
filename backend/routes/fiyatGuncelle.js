@@ -6,6 +6,10 @@
 const express = require('express');
 const router = express.Router();
 const woo = require('../services/wooFiyat');
+const { sadeceAdmin } = require('../middleware/rol');
+// ÖNEMLİ: eskiden bu rotada rol kontrolü YOKTU - giriş yapabilen herhangi bir
+// müşteri hesabı sitedeki ürün fiyatlarını değiştirebiliyordu. Artık sadece admin.
+router.use(sadeceAdmin);
 
 function hataYaniti(res, e, varsayilan = 'Bir hata oluştu') {
   console.error('[FiyatGuncelle]', e.message);

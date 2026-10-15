@@ -6,3 +6,10 @@ backend/uploads/
 *.log
 .env
 .DS_Store
+
+# Gizli anahtar dosyaları ASLA GitHub'a gitmesin (backend/env-yeni.env bir kez yanlışlıkla gitmişti)
+*.env
+!*.env.example
+.env.*
+!.env.example
+env-*.env

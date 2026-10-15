@@ -1,3 +1,4 @@
+import GuvenlikKontrolu from '../components/GuvenlikKontrolu';
 import PaytrAyarlari from '../toptan/PaytrAyarlari';
 import { useState, useEffect, useRef } from 'react';
 import { ayarlarApi } from '../api';
@@ -57,10 +58,12 @@ export default function AyarlarPage() {
   return (
     <div>
       <div className="page-header">
-        <div><div className="page-title">⚙️ Ayarlar</div><div className="page-sub">Kapasite, ödeme (PayTR) ve yedekleme ayarları</div></div>
+        <div><div className="page-title">⚙️ Ayarlar</div><div className="page-sub">Güvenlik, kapasite, ödeme (PayTR) ve yedekleme ayarları</div></div>
       </div>
 
       <div style={{ maxWidth:760, display:'flex', flexDirection:'column', gap:18 }}>
+
+        <GuvenlikKontrolu />
 
         {/* Press kapasitesi */}
         <div className="card" style={{ padding:22 }}>

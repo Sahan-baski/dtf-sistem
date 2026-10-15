@@ -24,6 +24,8 @@ xcopy /s /e /y /q dist\* ..\backend\public\ >nul
 cd ..
 
 echo  [3/3] GitHub a gonderiliyor...
+REM Gizli anahtar dosyalari GitHub'dan cikarilir (bilgisayarinda kalir, sadece gonderilmez).
+git rm --cached -q --ignore-unmatch backend/env-yeni.env backend/.env backend/routes/yedek.js.new >nul 2>&1
 git add .
 git commit -m "guncelleme"
 git push

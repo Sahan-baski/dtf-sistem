@@ -6,17 +6,30 @@ const baglan = require('./db');
 const authMiddleware = require('./middleware/auth');
 const User = require('./models/User');
 
+const { guvenlikBasliklari, nosqlTemizle } = require('./middleware/guvenlik');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
-app.use(cors());
+app.set('trust proxy', 1);          // Render'ın önündeki proxy: req.ip gerçek ziyaretçi IP'si olsun (hız sınırı için)
+app.disable('x-powered-by');
+app.use(guvenlikBasliklari);
+// CORS: panel ve API aynı adresten sunuluyor, başka sitelerin tarayıcıdan API'yi
+// çağırmasına gerek yok. Gerekirse CORS_ORIGINS="https://a.com,https://b.com" ile açılır.
+const izinliOriginler = String(process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({ origin: izinliOriginler.length ? izinliOriginler : false }));
 // verify: WooCommerce webhook imzasını (HMAC) kontrol edebilmek için ham gövdeyi
 // de saklıyoruz - JSON.parse edilmiş req.body'den imza tekrar hesaplanamaz.
-app.use(express.json({limit:'50mb', verify:(req,_res,buf)=>{ req.rawBody = buf; }}));
-app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.join(__dirname,'./uploads')));
+// Boyut sınırı: normal istekler 2MB; sadece yedekten geri yükleme büyük olabilir.
+const jsonKucuk = express.json({ limit: '2mb', verify: (req, _res, buf) => { req.rawBody = buf; } });
+const jsonBuyuk = express.json({ limit: '50mb' });
+app.use((req, res, next) => (req.path.startsWith('/api/yedek') ? jsonBuyuk : jsonKucuk)(req, res, next));
+// NOT: /uploads artık herkese açık sunulmuyor - dosyalar sadece giriş yapmış ekip
+// üyelerine /api/dosyalar/indir üzerinden verilir.
 
 // WooCommerce webhook'u - JWT gerektirmez (WooCommerce token'ımızı taşıyamaz),
 // onun yerine kendi HMAC imza kontrolünü yapar. Auth middleware'in dışında.
 app.use('/api/webhooks/woocommerce', require('./routes/webhookWoo'));
+app.use(nosqlTemizle); // MongoDB operatör enjeksiyonu ({"$ne": ...}) engeli - webhook'tan SONRA (imza ham gövdeyle kontrol ediliyor)
 
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/siparisler',    authMiddleware, require('./routes/siparisler'));
@@ -38,8 +51,9 @@ app.use('/api/varyasyon-denetim', authMiddleware, require('./routes/varyasyonDen
 // Toptan sipariş: PayTR bildirim/sonuç uçları herkese açık, geri kalanını route kendi korur.
 app.use('/api/toptan', require('./routes/toptan'));
 app.use('/api/siparis-senkron', authMiddleware, require('./routes/siparisSenkron'));
-
+app.use('/api/guvenlik',      authMiddleware, require('./routes/guvenlik'));
 app.get('/api/ping', (req,res) => res.json({durum:'aktif'}));
+app.use('/api', (req, res) => res.status(404).json({ hata: 'Bulunamadı' }));
 app.use(express.static(path.join(__dirname,'./public')));
 app.get('/{*path}', (req,res) => res.sendFile(path.join(__dirname,'./public/index.html')));
 

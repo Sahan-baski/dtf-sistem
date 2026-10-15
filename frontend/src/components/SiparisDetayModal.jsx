@@ -283,9 +283,17 @@ export default function SiparisDetayModal({ siparis, onKapat, onGuncelle }) {
                     <div style={{ fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.orijinal_ad}</div>
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>{(d.boyut / 1024).toFixed(1)} KB</div>
                   </div>
-                  <a href={dosyaApi.indirUrl(d.dosya_adi)} download={d.orijinal_ad} className="btn-icon" title="İndir">
+                  <button className="btn-icon" title="İndir" onClick={async () => {
+                    // Dosyalar artık sadece giriş yapmış ekibe açık - token'lı istekle indirilir.
+                    try {
+                      const r = await dosyaApi.indir(d.dosya_adi);
+                      const url = URL.createObjectURL(r.data);
+                      const a = document.createElement('a'); a.href = url; a.download = d.orijinal_ad || d.dosya_adi;
+                      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+                    } catch { alert('Dosya indirilemedi'); }
+                  }}>
                     <i className="ti ti-download" style={{ fontSize: 14 }} />
-                  </a>
+                  </button>
                   <button className="btn-icon" onClick={() => handleDosyaSil(d.id)} title="Sil">
                     <i className="ti ti-trash" style={{ fontSize: 14 }} />
                   </button>

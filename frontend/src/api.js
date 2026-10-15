@@ -7,7 +7,8 @@ api.interceptors.request.use(config => {
   return config;
 });
 api.interceptors.response.use(r=>r, err => {
-  if (err.response?.status===401) { localStorage.removeItem('dtf_token'); localStorage.removeItem('dtf_user'); window.location.reload(); }
+  // Giriş denemesindeki 401 (şifre hatalı) sayfayı yenilemesin - mesaj kullanıcıya gösterilsin.
+  if (err.response?.status===401 && !String(err.config?.url||'').includes('/auth/giris')) { localStorage.removeItem('dtf_token'); localStorage.removeItem('dtf_user'); window.location.reload(); }
   return Promise.reject(err);
 });
 
@@ -38,11 +39,13 @@ export const gorevApi = {
 };
 export const shopierApi = { cek:()=>api.post('/shopier/cek') };
 export const musteriApi = { getAll:()=>api.get('/musteriler') };
+export const guvenlikApi = { durum: () => api.get('/guvenlik') };
 export const dosyaApi = {
   getAll:(sid)=>api.get(`/dosyalar/${sid}`),
   yukle:(sid,fd)=>api.post(`/dosyalar/yukle/${sid}`,fd,{headers:{'Content-Type':'multipart/form-data'}}),
   sil:(id)=>api.delete(`/dosyalar/${id}`),
   indirUrl:(ad)=>`/api/dosyalar/indir/${ad}`,
+  indir:(ad)=>api.get(`/dosyalar/indir/${encodeURIComponent(ad)}`,{responseType:'blob'}),
 };
 export const ozetApi = { get:()=>api.get('/ozet') };
 export const urunApi = {

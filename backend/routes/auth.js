@@ -3,36 +3,56 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { sadeceAdmin } = require('../middleware/rol');
+const { hizSiniri } = require('../middleware/guvenlik');
+
+// Şifre deneme saldırısına karşı: aynı IP + kullanıcı adıyla 15 dakikada en fazla
+// 8 hatalı giriş; ayrıca bir IP'den 15 dakikada en fazla 40 giriş isteği.
+const girisKullaniciSiniri = hizSiniri({ pencereMs: 15 * 60 * 1000, limit: 8, mesaj: 'Çok fazla hatalı giriş denemesi. 15 dakika sonra tekrar deneyin.',
+  anahtarFn: (req) => `${req.ip}|${String(req.body?.kullanici_adi || '').toLowerCase()}` });
+const girisIpSiniri = hizSiniri({ pencereMs: 15 * 60 * 1000, limit: 40, mesaj: 'Çok fazla giriş denemesi. Biraz sonra tekrar deneyin.' });
+const kayitSiniri = hizSiniri({ pencereMs: 60 * 60 * 1000, limit: 5, mesaj: 'Bu bağlantıdan çok fazla kayıt denemesi yapıldı. Daha sonra tekrar deneyin.' });
+const metin = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const HATALI_GIRIS = 'Kullanıcı adı veya şifre hatalı';
 // middleware/auth.js ile AYNI mantık: sabit yedek değer yok, ayarlanmamışsa
 // modül yüklenirken hata fırlatılır - bkz. middleware/auth.js'deki açıklama.
 const SECRET = process.env.JWT_SECRET;
 if (!SECRET) throw new Error('JWT_SECRET ortam değişkeni ayarlanmamış - sunucu güvenli başlatılamaz.');
 
-router.post('/giris', async (req, res) => {
+router.post('/giris', girisIpSiniri, girisKullaniciSiniri, async (req, res) => {
   try {
-    const { kullanici_adi, sifre, rol_tipi } = req.body;
-    const u = await User.findOne({ kullanici_adi: kullanici_adi?.toLowerCase() });
-    if (!u) return res.status(401).json({ hata: 'Kullanıcı bulunamadı' });
+    const { rol_tipi } = req.body || {};
+    const kullanici_adi = metin(req.body?.kullanici_adi, 60).toLowerCase();
+    const sifre = typeof req.body?.sifre === 'string' ? req.body.sifre : '';
+    if (!kullanici_adi || !sifre) return res.status(400).json({ hata: 'Kullanıcı adı ve şifre gerekli' });
+    const u = await User.findOne({ kullanici_adi });
+    // Kullanıcı adının var olup olmadığı dışarıya sızdırılmaz: yok da olsa şifre yanlış da olsa aynı mesaj.
+    if (!u) return res.status(401).json({ hata: HATALI_GIRIS });
+    const dogru = await u.sifreKontrol(sifre);
+    if (!dogru) return res.status(401).json({ hata: HATALI_GIRIS });
+    girisKullaniciSiniri.sifirla(req);
     if (!u.aktif) return res.status(401).json({ hata: 'Hesap pasif' });
     if (u.onay_bekliyor) return res.status(401).json({ hata: 'Hesabınız onay bekliyor' });
-    const dogru = await u.sifreKontrol(sifre);
-    if (!dogru) return res.status(401).json({ hata: 'Şifre hatalı' });
     if (rol_tipi === 'yonetim' && u.rol === 'musteri') return res.status(401).json({ hata: 'Bu panel için yetkiniz yok' });
     if (rol_tipi === 'musteri' && u.rol !== 'musteri') return res.status(401).json({ hata: 'Yönetim panelinden giriş yapın' });
     const token = jwt.sign({ id: u._id, rol: u.rol, kullanici_adi: u.kullanici_adi }, SECRET, { expiresIn: '30d' });
     res.json({ token, kullanici: { id: u._id, kullanici_adi: u.kullanici_adi, ad: u.ad, soyad: u.soyad, rol: u.rol, firma_adi: u.firma_adi } });
-  } catch (err) { res.status(500).json({ hata: err.message }); }
+  } catch (err) { console.error('[Giriş]', err.message); res.status(500).json({ hata: 'Giriş yapılamadı' }); }
 });
 
-router.post('/kayit', async (req, res) => {
+router.post('/kayit', kayitSiniri, async (req, res) => {
   try {
-    const { kullanici_adi, sifre, ad, soyad, firma_adi, telefon, email, adres, vergi_no } = req.body;
+    const b = req.body || {};
+    const kullanici_adi = metin(b.kullanici_adi, 40).toLowerCase();
+    const sifre = typeof b.sifre === 'string' ? b.sifre : '';
+    const ad = metin(b.ad, 80);
     if (!kullanici_adi || !sifre || !ad) return res.status(400).json({ hata: 'Zorunlu alanlar eksik' });
-    const var_mi = await User.findOne({ kullanici_adi: kullanici_adi.toLowerCase() });
+    if (!/^[a-z0-9._-]{3,40}$/.test(kullanici_adi)) return res.status(400).json({ hata: 'Kullanıcı adı 3-40 karakter olmalı; sadece harf, rakam, nokta, tire ve alt çizgi içerebilir.' });
+    if (sifre.length < 8 || sifre.length > 200) return res.status(400).json({ hata: 'Şifre en az 8 karakter olmalı.' });
+    const var_mi = await User.findOne({ kullanici_adi });
     if (var_mi) return res.status(400).json({ hata: 'Bu kullanıcı adı alınmış' });
-    const u = await User.create({ kullanici_adi, sifre, ad, soyad: soyad||'', firma_adi: firma_adi||'', telefon: telefon||'', email: email||'', adres: adres||'', vergi_no: vergi_no||'', rol: 'musteri', onay_bekliyor: true, aktif: true });
+    const u = await User.create({ kullanici_adi, sifre, ad, soyad: metin(b.soyad, 80), firma_adi: metin(b.firma_adi, 150), telefon: metin(b.telefon, 30), email: metin(b.email, 150), adres: metin(b.adres, 500), vergi_no: metin(b.vergi_no, 30), rol: 'musteri', onay_bekliyor: true, aktif: true });
     res.status(201).json({ mesaj: 'Kayıt alındı, onay bekleniyor' });
-  } catch (err) { res.status(500).json({ hata: err.message }); }
+  } catch (err) { console.error('[Kayıt]', err.message); res.status(500).json({ hata: 'Kayıt yapılamadı' }); }
 });
 
 const authMiddleware = require('../middleware/auth');
@@ -76,13 +96,18 @@ router.patch('/kullanicilar/:id', authMiddleware, sadeceAdmin, async (req, res) 
       const u = await User.findById(req.params.id);
       if (u) { u.sifre = sifre; await u.save(); }
     }
+    if (guncelle.rol && !['admin', 'calisan', 'musteri'].includes(guncelle.rol)) return res.status(400).json({ hata: 'Geçersiz rol' });
     const u = await User.findByIdAndUpdate(req.params.id, guncelle, { new: true }).select('-sifre');
+    authMiddleware.onbellekTemizle(req.params.id); // pasife alma / rol değişikliği hemen geçerli olsun
     res.json(u);
   } catch (err) { res.status(500).json({ hata: err.message }); }
 });
 
 router.delete('/kullanicilar/:id', authMiddleware, sadeceAdmin, async (req, res) => {
-  try { await User.findByIdAndDelete(req.params.id); res.json({ mesaj: 'Silindi' }); }
+  try {
+    if (String(req.params.id) === String(req.kullanici.id)) return res.status(400).json({ hata: 'Kendi hesabını silemezsin' });
+    await User.findByIdAndDelete(req.params.id); authMiddleware.onbellekTemizle(req.params.id); res.json({ mesaj: 'Silindi' });
+  }
   catch (err) { res.status(500).json({ hata: err.message }); }
 });
 
