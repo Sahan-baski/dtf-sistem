@@ -725,9 +725,17 @@ function OdemePaneli({ siparis, ayarlar, toast, onGuncellendi }) {
       if (!e.data || e.data.tip !== 'toptan-odeme' || e.data.no !== siparis.siparis_no) return;
       setIframeUrl('');
       if (e.data.durum === 'basarili') {
-        toast('Ödemeniz alındı - siparişiniz hazırlanacak ✓');
-        // Kesin onay PayTR'ın sunucumuza gönderdiği bildirimle gelir - kısa süre sonra durumu yenile.
-        setTimeout(() => toptanApi.siparislerim().then(r => onGuncellendi(r.data.find(s => s._id === siparis._id))).catch(() => {}), 2500);
+        toast('Ödemeniz alındı - onaylanıyor…');
+        // Kesin onay için PayTR'a sorulur (durum sorgusu); PayTR'ın kaydı birkaç saniye gecikebildiği için birkaç kez dener.
+        const dene = async (kalan) => {
+          try {
+            const s = (await toptanApi.paytrKontrol(siparis._id)).data;
+            if (s?.odeme?.odendi) { onGuncellendi(s); toast('Ödemeniz onaylandı - siparişiniz hazırlanacak ✓'); return; }
+          } catch { /* tekrar dene */ }
+          if (kalan > 0) setTimeout(() => dene(kalan - 1), 4000);
+          else toast('Ödemeniz birkaç dakika içinde onaylanacak; "Siparişlerim"den takip edebilirsiniz.');
+        };
+        setTimeout(() => dene(4), 1500);
       } else toast('Ödeme tamamlanamadı, tekrar deneyebilirsiniz.', 'error');
     };
     window.addEventListener('message', dinle);
@@ -835,6 +843,12 @@ function Siparislerim({ siparisler, ayarlar, toast, onYenile, onTekrar }) {
             )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
               {odenmedi && <button className="btn btn-primary btn-sm" onClick={() => setOdemeSiparisi(s)}><i className="ti ti-credit-card" />Öde</button>}
+              {odenmedi && s.odeme?.yontem === 'paytr' && (
+                <button className="btn btn-secondary btn-sm" title="Kartla ödediyseniz ödemenizi şimdi doğrular"
+                  onClick={async () => { try { const r = await toptanApi.paytrKontrol(s._id); toast(r.data?.odeme?.odendi ? 'Ödemeniz onaylandı ✓' : 'Henüz onaylanmış bir kart ödemesi görünmüyor'); onYenile(); } catch { toast('Kontrol edilemedi', 'error'); } }}>
+                  <i className="ti ti-refresh" />Ödememi kontrol et
+                </button>
+              )}
               <button className="btn btn-secondary btn-sm" onClick={() => onTekrar(s)}><i className="ti ti-repeat" />Tekrar Sipariş Ver</button>
               <button className="btn btn-secondary btn-sm" onClick={() => proformaYazdir(s, ayarlar || {})}><i className="ti ti-printer" />Yazdır</button>
               {(odenmedi || fiyatBekliyor) && <button className="btn btn-secondary btn-sm" onClick={() => iptal(s)} style={{ color: 'var(--red)' }}><i className="ti ti-x" />İptal Et</button>}

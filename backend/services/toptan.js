@@ -71,11 +71,13 @@ async function ayarlariKaydet(g) {
 // asla döndürmez (bkz. routes/ayarlar.js), panelde de sadece "girildi" bilgisi gösterilir.
 async function paytrGetir() {
   const a = await Ayar.findOne({ anahtar: 'toptan_paytr' }).lean();
-  return { merchant_id: '', merchant_key: '', merchant_salt: '', test_modu: true, ...((a && a.deger) || {}) };
+  // site_ortak: aynı PayTR mağazası mirascocuk.com'da da kullanılıyor → PayTR'daki tek
+  // "Bildirim URL" sitede kalır; bu paneldeki ödemeler PayTR Durum Sorgu API'siyle onaylanır.
+  return { merchant_id: '', merchant_key: '', merchant_salt: '', test_modu: true, site_ortak: true, ...((a && a.deger) || {}) };
 }
 const paytrHazir = (p) => !!(p.merchant_id && p.merchant_key && p.merchant_salt);
 function paytrGorunumu(p) {
-  return { merchant_id: p.merchant_id, merchant_key_girildi: !!p.merchant_key, merchant_salt_girildi: !!p.merchant_salt, test_modu: !!p.test_modu, hazir: paytrHazir(p) };
+  return { merchant_id: p.merchant_id, merchant_key_girildi: !!p.merchant_key, merchant_salt_girildi: !!p.merchant_salt, test_modu: !!p.test_modu, site_ortak: p.site_ortak !== false, hazir: paytrHazir(p) };
 }
 async function paytrKaydet(g) {
   const p = await paytrGetir();
@@ -85,6 +87,7 @@ async function paytrKaydet(g) {
     merchant_key: g.merchant_key ? String(g.merchant_key).trim() : p.merchant_key,
     merchant_salt: g.merchant_salt ? String(g.merchant_salt).trim() : p.merchant_salt,
     test_modu: g.test_modu !== undefined ? !!g.test_modu : p.test_modu,
+    site_ortak: g.site_ortak !== undefined ? !!g.site_ortak : p.site_ortak !== false,
   };
   await Ayar.findOneAndUpdate({ anahtar: 'toptan_paytr' }, { deger: yeni }, { upsert: true });
   return paytrGorunumu(yeni);
@@ -409,6 +412,7 @@ async function odemesizleriIptalEt() {
   let sayi = 0;
   for (const s of adaylar) {
     if (s.odeme.paytr_token_zamani && s.odeme.paytr_token_zamani > odemeEkraniSiniri) continue;
+    if ((s.odeme.paytr_oidler || []).length && (await paytrDurumSorgula(s)).odendi) continue; // iptalden önce PayTR'a son kez sor
     if (s.fiyat_verilme_tarihi && s.fiyat_verilme_tarihi > sinir) continue; // süre fiyat bildirildiği andan işler
     await iptalEt(s, `${ayar.odeme_sure_saat} saat içinde ödeme yapılmadı`);
     sayi++;
@@ -421,8 +425,11 @@ let zamanlayici = null;
 function zamanlayiciBaslat() {
   if (zamanlayici) return;
   const calistir = () => odemesizleriIptalEt().catch(e => console.error('[Toptan] Otomatik iptal hatası:', e.message));
+  const sorgula = () => paytrBekleyenleriKontrolEt().catch(e => console.error('[Toptan] PayTR kontrol hatası:', e.message));
   setTimeout(calistir, 60 * 1000);
+  setTimeout(sorgula, 90 * 1000);
   zamanlayici = setInterval(calistir, 30 * 60 * 1000);
+  setInterval(sorgula, 10 * 60 * 1000);
 }
 
 // ----- PayTR (iFrame API) -----
@@ -505,19 +512,91 @@ async function paytrToken(sip, { ip, tabanUrl }) {
   if (sip.durum === 'fiyat_bekliyor') throw new KullaniciHatasi('Fiyat henüz bildirilmedi - fiyat bildirildiğinde ödeme yapabilirsiniz.');
   if (sip.odeme.odendi) throw new KullaniciHatasi('Bu sipariş zaten ödenmiş.');
 
+  // Her deneme için ayrı merchant_oid: "MSA" öneki sitedeki (WooCommerce) PayTR siparişlerinden
+  // ayırt etmeyi sağlar; D<n> eki aynı siparişin tekrar denenmesinde benzersizliği korur.
+  const oidler = sip.odeme.paytr_oidler || [];
+  const oid = `MSA${sip.siparis_no}D${oidler.length + 1}`;
   const data = await paytrTokenIste(p, {
-    ip, oid: sip.siparis_no, email: sip.teslimat.email, kurus: Math.round(sip.toplam * 100), sepet: paytrSepeti(sip), test: p.test_modu,
+    ip, oid, email: sip.teslimat.email, kurus: Math.round(sip.toplam * 100), sepet: paytrSepeti(sip), test: p.test_modu,
     ad: sip.teslimat.firma ? `${sip.teslimat.ad_soyad} - ${sip.teslimat.firma}` : sip.teslimat.ad_soyad,
     adres: `${sip.teslimat.adres} ${sip.teslimat.il}`, telefon: sip.teslimat.telefon, tabanUrl,
   });
   if (!data || data.status !== 'success') throw new KullaniciHatasi(`PayTR ödeme ekranı açılamadı: ${(data && data.reason) || 'bilinmeyen hata'}`);
 
   sip.odeme.yontem = 'paytr';
+  sip.odeme.paytr_oidler = [...oidler, oid];
   sip.odeme.paytr_tutar_kurus = Math.round(sip.toplam * 100);
   sip.odeme.paytr_token_zamani = new Date();
   sip.markModified('odeme');
   await sip.save();
   return { token: data.token, iframe_url: `https://www.paytr.com/odeme/guvenli/${data.token}` };
+}
+
+/** PayTR merchant_oid → sipariş no ("MSAT2610151234D2" → "T2610151234"; eski biçim olduğu gibi). */
+function siparisNoBul(oid) {
+  const m = /^MSA([A-Za-z0-9]+?)D\d+$/.exec(String(oid || ''));
+  return m ? m[1] : String(oid || '');
+}
+
+/** Ödeme alındıysa siparişi işaretler (iptal edilmişse sadece uyarı yazar). Bildirim ve durum sorgusu ortak kullanır. */
+async function paytrOdemesiGeldi(sip, tl, kaynak) {
+  if (sip.odeme.odendi) return sip;
+  if (sip.durum === 'iptal') {
+    sip.odeme.odendi = true;
+    sip.odeme.odeme_tarihi = new Date();
+    sip.gecmis.push({ olay: `⚠️ İPTAL EDİLMİŞ siparişe PayTR ödemesi geldi (${tl}₺) - stok yeniden ayrılmadı, iade ya da elle yeniden işleme gerekebilir` });
+    sip.markModified('odeme');
+    await sip.save();
+    return sip;
+  }
+  return odendiIsaretle(sip, 'paytr', `PayTR ile ödendi (${Number(tl).toLocaleString('tr-TR')}₺${kaynak ? `, ${kaynak}` : ''})`);
+}
+
+/**
+ * PayTR Durum Sorgu API: siparişin PayTR denemelerinden biri ödenmiş mi? Bildirim URL'si
+ * sitede (WooCommerce) kaldığı için bu paneldeki ödemeler bununla onaylanır.
+ * Dönüş: { odendi, sip }.
+ */
+async function paytrDurumSorgula(sip) {
+  const p = await paytrGetir();
+  const oidler = (sip.odeme.paytr_oidler || []).slice(-5).reverse();
+  if (!paytrHazir(p) || !oidler.length || sip.odeme.odendi) return { odendi: !!sip.odeme.odendi, sip };
+  for (const oid of oidler) {
+    try {
+      const govde = new URLSearchParams({ merchant_id: p.merchant_id, merchant_oid: oid, paytr_token: hmac(p.merchant_key, p.merchant_id + oid + p.merchant_salt) });
+      const { data } = await axios.post('https://www.paytr.com/odeme/durum-sorgu', govde.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000,
+      });
+      if (data && data.status === 'success') {
+        const odenen = parseFloat(data.payment_total || data.payment_amount) || sip.toplam;
+        // Bazı yanıtlarda tutar kuruş olarak gelebiliyor - siparişten çok büyükse TL'ye çevir.
+        const tl = odenen > sip.toplam * 50 ? odenen / 100 : odenen;
+        sip.odeme.paytr_durum = 'success';
+        await paytrOdemesiGeldi(sip, tl, 'durum sorgusuyla doğrulandı');
+        return { odendi: true, sip };
+      }
+    } catch (e) {
+      console.error('[Toptan] PayTR durum sorgusu:', e.message);
+    }
+  }
+  sip.odeme.paytr_son_sorgu = new Date();
+  sip.markModified('odeme');
+  await sip.save();
+  return { odendi: false, sip };
+}
+
+/** Kartla ödeme ekranı açılmış, henüz ödenmemiş siparişleri PayTR'a sorar (zamanlayıcı her 10 dk'da bir çalıştırır). */
+async function paytrBekleyenleriKontrolEt() {
+  const p = await paytrGetir();
+  if (!paytrHazir(p)) return 0;
+  const sinir = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+  const adaylar = await ToptanSiparis.find({ durum: 'odeme_bekliyor', 'odeme.odendi': false, 'odeme.paytr_token_zamani': { $gt: sinir } });
+  let sayi = 0;
+  for (const s of adaylar) {
+    if ((await paytrDurumSorgula(s)).odendi) sayi++;
+  }
+  if (sayi) console.log(`[Toptan] PayTR durum sorgusu: ${sayi} sipariş ödendi olarak işaretlendi.`);
+  return sayi;
 }
 
 /** PayTR'ın sunucumuza gönderdiği ödeme sonucu bildirimi. Hash doğrulanmazsa reddedilir. */
@@ -528,20 +607,11 @@ async function paytrBildirim(govde) {
   const beklenen = hmac(p.merchant_key, `${merchant_oid}${p.merchant_salt}${status}${total_amount}`);
   if (!hash || hash !== beklenen) throw new Error('PAYTR bildirim hash doğrulanamadı');
 
-  const sip = await ToptanSiparis.findOne({ siparis_no: merchant_oid });
+  const sip = await ToptanSiparis.findOne({ siparis_no: siparisNoBul(merchant_oid) });
   if (!sip || sip.odeme.odendi) return; // bilinmeyen ya da zaten işlenmiş (PayTR aynı bildirimi tekrarlayabilir)
   sip.odeme.paytr_durum = status;
   if (status === 'success') {
-    const tl = (parseInt(total_amount, 10) || 0) / 100;
-    if (sip.durum === 'iptal') {
-      sip.odeme.odendi = true;
-      sip.odeme.odeme_tarihi = new Date();
-      sip.gecmis.push({ olay: `⚠️ İPTAL EDİLMİŞ siparişe PayTR ödemesi geldi (${tl}₺) - stok yeniden ayrılmadı, iade ya da elle yeniden işleme gerekebilir` });
-      sip.markModified('odeme');
-      await sip.save();
-    } else {
-      await odendiIsaretle(sip, 'paytr', `PayTR ile ödendi (${tl.toLocaleString('tr-TR')}₺)`);
-    }
+    await paytrOdemesiGeldi(sip, (parseInt(total_amount, 10) || 0) / 100);
   } else {
     sip.odeme.paytr_hata = `${govde.failed_reason_code || ''} ${govde.failed_reason_msg || ''}`.trim();
     sip.gecmis.push({ olay: `PayTR ödemesi başarısız: ${sip.odeme.paytr_hata || 'bilinmiyor'}` });
@@ -583,6 +653,6 @@ module.exports = {
   ayarlariGetir, ayarlariKaydet, paytrGetir, paytrKaydet, paytrGorunumu,
   musaitlik, katalog, dogrula, fiyatHesapla,
   siparisOlustur, iptalEt, fiyatVer, odendiIsaretle, odemesizleriIptalEt, zamanlayiciBaslat,
-  paytrToken, paytrBildirim, paytrSepeti, paytrBaglantiTesti, hmac,
+  paytrToken, paytrBildirim, paytrSepeti, paytrBaglantiTesti, paytrDurumSorgula, paytrBekleyenleriKontrolEt, siparisNoBul, hmac,
   uretimListesi, ozet,
 };

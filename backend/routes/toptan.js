@@ -105,6 +105,15 @@ router.post('/siparisler/:id/paytr', async (req, res) => {
   } catch (e) { hataYaniti(res, e, 'Ödeme ekranı açılamadı'); }
 });
 
+// Ödeme ekranı "başarılı" dediğinde panel bunu çağırır: PayTR'a sorup siparişi hemen "ödendi" yapar.
+router.post('/siparisler/:id/paytr-kontrol', async (req, res) => {
+  try {
+    const u = await toptanKullanicisi(req, res); if (!u) return;
+    const sip = await kendiSiparisi(req, res, u); if (!sip) return;
+    res.json((await toptan.paytrDurumSorgula(sip)).sip);
+  } catch (e) { hataYaniti(res, e); }
+});
+
 router.post('/siparisler/:id/havale', async (req, res) => {
   try {
     const u = await toptanKullanicisi(req, res); if (!u) return;
@@ -175,6 +184,14 @@ admin.post('/siparisler/:id/odendi', async (req, res) => {
     if (sip.odeme.odendi) return res.json(sip);
     const yontem = req.body && req.body.yontem === 'paytr' ? 'paytr' : 'havale';
     res.json(await toptan.odendiIsaretle(sip, yontem, `Ödeme elle onaylandı (${yontem === 'havale' ? 'havale/EFT' : 'PayTR'})`));
+  } catch (e) { hataYaniti(res, e); }
+});
+
+admin.post('/siparisler/:id/paytr-kontrol', async (req, res) => {
+  try {
+    const sip = await ToptanSiparis.findById(req.params.id);
+    if (!sip) return res.status(404).json({ hata: 'Bulunamadı' });
+    res.json((await toptan.paytrDurumSorgula(sip)).sip);
   } catch (e) { hataYaniti(res, e); }
 });
 

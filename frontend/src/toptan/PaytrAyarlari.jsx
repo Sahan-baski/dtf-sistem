@@ -10,14 +10,14 @@ import { useToast } from '../context/ToastContext';
 export default function PaytrAyarlari() {
   const toast = useToast();
   const [veri, setVeri] = useState(null);
-  const [form, setForm] = useState({ merchant_id: '', merchant_key: '', merchant_salt: '', test_modu: true });
+  const [form, setForm] = useState({ merchant_id: '', merchant_key: '', merchant_salt: '', test_modu: true, site_ortak: true });
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const [test, setTest] = useState(null); // { basarili, mesaj } | 'bekliyor'
 
   const yukle = useCallback(async () => {
     const r = await toptanApi.admin.paytrGetir();
     setVeri(r.data);
-    setForm({ merchant_id: r.data.paytr.merchant_id || '', merchant_key: '', merchant_salt: '', test_modu: r.data.paytr.test_modu });
+    setForm({ merchant_id: r.data.paytr.merchant_id || '', merchant_key: '', merchant_salt: '', test_modu: r.data.paytr.test_modu, site_ortak: r.data.paytr.site_ortak !== false });
   }, []);
   useEffect(() => { yukle().catch(() => toast('PayTR ayarları yüklenemedi', 'error')); }, [yukle]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -71,9 +71,30 @@ export default function PaytrAyarlari() {
         </div>
       </div>
 
-      <Adim no="2" baslik="Bildirim URL'sini PayTR'a gir">
-        PayTR panelinde <b>Destek &amp; Kurulum → Ayarlar → Bildirim URL Ayarı → Değiştir</b>{" "}
-        (<a href="https://www.paytr.com/magaza/ayarlar" target="_blank" rel="noreferrer">paytr.com/magaza/ayarlar</a>) - bu adresi yapıştırıp kaydet. Ödeme sonucu bu adrese gelir; girilmezse ödemeler panelde "ödendi" olmaz.
+      <Adim no="2" baslik="Bu PayTR mağazası başka yerde de kullanılıyor mu?">
+        <div style={{ display: 'grid', gap: 6, margin: '4px 0 8px' }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
+            <input type="radio" name="paytr_site_ortak" checked={form.site_ortak} onChange={() => setForm(f => ({ ...f, site_ortak: true }))} style={{ marginTop: 3 }} />
+            <span><b style={{ color: 'var(--text)' }}>Evet, mirascocuk.com'a bağlı</b> (sitede de bu mağazayla kart ödemesi alınıyor)</span>
+          </label>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
+            <input type="radio" name="paytr_site_ortak" checked={!form.site_ortak} onChange={() => setForm(f => ({ ...f, site_ortak: false }))} style={{ marginTop: 3 }} />
+            <span><b style={{ color: 'var(--text)' }}>Hayır</b>, bu mağaza sadece bu panel için</span>
+          </label>
+        </div>
+        {form.site_ortak ? (
+          <div style={{ background: 'rgba(217,119,6,0.08)', borderRadius: 'var(--r-xs)', padding: '10px 12px' }}>
+            <b style={{ color: 'var(--amber)' }}>PayTR'daki Bildirim URL'sini DEĞİŞTİRME</b> - PayTR'da tek bildirim adresi olur ve o adres sitenin ödemeleri için gerekli.
+            Bu paneldeki ödemeler PayTR'a <b>durum sorgusuyla</b> doğrulanır: müşteri ödemeyi bitirince anında, ayrıca her 10 dakikada bir. Bu panelin sipariş numaraları "MSA" ile başlar, sitedeki siparişlerle karışmaz.
+            <div style={{ marginTop: 6 }}>
+              Sitedeki <b>Mağaza Görünümü</b> eklentisini <b>1.7.1</b>'e güncelle - bu ödemelerin bildirimlerini WooCommerce'e ulaşmadan karşılar.
+              İstersen eklentinin ayarlarındaki <b>"dtf-sistem bildirim adresi"</b> alanına bu adresi yaz, onay anında gelir (zorunlu değil):
+            </div>
+          </div>
+        ) : (
+          <>PayTR panelinde <b>Destek &amp; Kurulum → Ayarlar → Bildirim URL Ayarı → Değiştir</b>{' '}
+          (<a href="https://www.paytr.com/magaza/ayarlar" target="_blank" rel="noreferrer">paytr.com/magaza/ayarlar</a>) - bu adresi yapıştırıp kaydet.</>
+        )}
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
           <input className="form-input" readOnly value={veri.bildirim_url} onFocus={e => e.target.select()} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           <button className="btn btn-secondary btn-sm" onClick={kopyala}><i className="ti ti-copy" />Kopyala</button>

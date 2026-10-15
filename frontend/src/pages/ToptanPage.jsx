@@ -178,6 +178,12 @@ function SiparisDetay({ siparis: s, ayarlar, onKapat, onGuncellendi }) {
               {s.odeme?.yontem && <span style={{ color: 'var(--text2)', fontWeight: 400 }}> · {s.odeme.yontem === 'paytr' ? 'PayTR (kart)' : 'Havale/EFT'}</span>}
             </div>
             {s.odeme?.paytr_hata && <div style={{ color: 'var(--red)', fontSize: 12 }}>Son PayTR hatası: {s.odeme.paytr_hata}</div>}
+            {!s.odeme?.odendi && s.odeme?.paytr_oidler?.length > 0 && (
+              <button className="btn btn-secondary btn-sm" style={{ marginTop: 8, marginRight: 6 }} disabled={bekliyor}
+                onClick={() => islem(() => toptanApi.admin.paytrKontrol(s._id), 'PayTR sorgulandı')}>
+                <i className="ti ti-refresh" />PayTR'dan kontrol et
+              </button>
+            )}
             {!s.odeme?.odendi && !['iptal', 'fiyat_bekliyor'].includes(s.durum) && (
               <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} disabled={bekliyor}
                 onClick={() => confirm(`${tl(s.toplam)} tutarındaki ödemeyi (havale/EFT) aldığını onaylıyor musun?`) && islem(() => toptanApi.admin.odendi(s._id, 'havale'), 'Ödendi olarak işaretlendi')}>

@@ -49,6 +49,8 @@ const ToptanSiparisSchema = new Schema({
     paytr_hata: String,
     paytr_tutar_kurus: Number,
     paytr_token_zamani: Date,
+    paytr_oidler: [String], // PayTR'a gönderilen merchant_oid'ler (her ödeme denemesi ayrı: MSA<siparis_no>D<n>)
+    paytr_son_sorgu: Date,
   },
   // Fiyatı girilmemiş tablodan gelen siparişler 'fiyat_bekliyor' başlar; yönetici fiyatı
   // bildirince 'odeme_bekliyor'a geçer ve ödeme süresi bu andan itibaren işler.
