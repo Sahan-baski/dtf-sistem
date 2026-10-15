@@ -444,6 +444,60 @@ function paytrSepeti(sip) {
   return Buffer.from(JSON.stringify(sepet)).toString('base64');
 }
 
+/** PayTR iFrame API'den ödeme token'ı ister (ham cevabı döndürür). */
+async function paytrTokenIste(p, { ip, oid, email, kurus, sepet, test, ad, adres, telefon, tabanUrl }) {
+  const alanlar = {
+    merchant_id: p.merchant_id,
+    user_ip: ip,
+    merchant_oid: oid,
+    email,
+    payment_amount: String(kurus),
+    user_basket: sepet,
+    no_installment: '0',
+    max_installment: '0',
+    currency: 'TL',
+    test_mode: test ? '1' : '0',
+  };
+  const hashMetni = alanlar.merchant_id + alanlar.user_ip + alanlar.merchant_oid + alanlar.email + alanlar.payment_amount
+    + alanlar.user_basket + alanlar.no_installment + alanlar.max_installment + alanlar.currency + alanlar.test_mode;
+  const govde = new URLSearchParams({
+    ...alanlar,
+    paytr_token: hmac(p.merchant_key, hashMetni + p.merchant_salt),
+    debug_on: test ? '1' : '0',
+    user_name: String(ad || '').slice(0, 60),
+    user_address: String(adres || '').slice(0, 400),
+    user_phone: String(telefon || '').slice(0, 20),
+    merchant_ok_url: `${tabanUrl}/api/toptan/odeme-sonuc?durum=basarili&no=${oid}`,
+    merchant_fail_url: `${tabanUrl}/api/toptan/odeme-sonuc?durum=basarisiz&no=${oid}`,
+    timeout_limit: '30',
+    lang: 'tr',
+  });
+  const { data } = await axios.post('https://www.paytr.com/odeme/api/get-token', govde.toString(), {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000,
+  });
+  return data;
+}
+
+/**
+ * Bağlantı testi: kayıtlı bilgilerle TEST MODUNDA 1₺'lik bir ödeme ekranı token'ı ister.
+ * Token gelirse mağaza no / parola / gizli anahtar doğrudur. Para çekilmez, sipariş oluşmaz.
+ */
+async function paytrBaglantiTesti({ ip, tabanUrl }) {
+  const p = await paytrGetir();
+  if (!paytrHazir(p)) return { basarili: false, mesaj: 'Önce Mağaza No, Mağaza Parola ve Mağaza Gizli Anahtar alanlarını doldurup kaydet.' };
+  try {
+    const data = await paytrTokenIste(p, {
+      ip, oid: `TEST${Date.now()}`, email: 'test@mirascocuk.com', kurus: 100,
+      sepet: Buffer.from(JSON.stringify([['Baglanti testi', '1.00', 1]])).toString('base64'), test: true,
+      ad: 'Baglanti Testi', adres: 'Kayseri', telefon: '05000000000', tabanUrl,
+    });
+    if (data && data.status === 'success') return { basarili: true, mesaj: 'PayTR bağlantısı çalışıyor - bilgiler doğru.' };
+    return { basarili: false, mesaj: `PayTR reddetti: ${(data && data.reason) || 'bilinmeyen hata'}` };
+  } catch (e) {
+    return { basarili: false, mesaj: `PayTR'a ulaşılamadı: ${e.message}` };
+  }
+}
+
 async function paytrToken(sip, { ip, tabanUrl }) {
   const p = await paytrGetir();
   if (!paytrHazir(p)) throw new KullaniciHatasi('Kartla ödeme şu an kullanılamıyor. Havale/EFT ile ödeyebilir ya da bizimle iletişime geçebilirsiniz.');
@@ -451,34 +505,10 @@ async function paytrToken(sip, { ip, tabanUrl }) {
   if (sip.durum === 'fiyat_bekliyor') throw new KullaniciHatasi('Fiyat henüz bildirilmedi - fiyat bildirildiğinde ödeme yapabilirsiniz.');
   if (sip.odeme.odendi) throw new KullaniciHatasi('Bu sipariş zaten ödenmiş.');
 
-  const alanlar = {
-    merchant_id: p.merchant_id,
-    user_ip: ip,
-    merchant_oid: sip.siparis_no,
-    email: sip.teslimat.email,
-    payment_amount: String(Math.round(sip.toplam * 100)),
-    user_basket: paytrSepeti(sip),
-    no_installment: '0',
-    max_installment: '0',
-    currency: 'TL',
-    test_mode: p.test_modu ? '1' : '0',
-  };
-  const hashMetni = alanlar.merchant_id + alanlar.user_ip + alanlar.merchant_oid + alanlar.email + alanlar.payment_amount
-    + alanlar.user_basket + alanlar.no_installment + alanlar.max_installment + alanlar.currency + alanlar.test_mode;
-  const govde = new URLSearchParams({
-    ...alanlar,
-    paytr_token: hmac(p.merchant_key, hashMetni + p.merchant_salt),
-    debug_on: p.test_modu ? '1' : '0',
-    user_name: (sip.teslimat.firma ? `${sip.teslimat.ad_soyad} - ${sip.teslimat.firma}` : sip.teslimat.ad_soyad).slice(0, 60),
-    user_address: `${sip.teslimat.adres} ${sip.teslimat.il}`.slice(0, 400),
-    user_phone: sip.teslimat.telefon.slice(0, 20),
-    merchant_ok_url: `${tabanUrl}/api/toptan/odeme-sonuc?durum=basarili&no=${sip.siparis_no}`,
-    merchant_fail_url: `${tabanUrl}/api/toptan/odeme-sonuc?durum=basarisiz&no=${sip.siparis_no}`,
-    timeout_limit: '30',
-    lang: 'tr',
-  });
-  const { data } = await axios.post('https://www.paytr.com/odeme/api/get-token', govde.toString(), {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000,
+  const data = await paytrTokenIste(p, {
+    ip, oid: sip.siparis_no, email: sip.teslimat.email, kurus: Math.round(sip.toplam * 100), sepet: paytrSepeti(sip), test: p.test_modu,
+    ad: sip.teslimat.firma ? `${sip.teslimat.ad_soyad} - ${sip.teslimat.firma}` : sip.teslimat.ad_soyad,
+    adres: `${sip.teslimat.adres} ${sip.teslimat.il}`, telefon: sip.teslimat.telefon, tabanUrl,
   });
   if (!data || data.status !== 'success') throw new KullaniciHatasi(`PayTR ödeme ekranı açılamadı: ${(data && data.reason) || 'bilinmeyen hata'}`);
 
@@ -553,6 +583,6 @@ module.exports = {
   ayarlariGetir, ayarlariKaydet, paytrGetir, paytrKaydet, paytrGorunumu,
   musaitlik, katalog, dogrula, fiyatHesapla,
   siparisOlustur, iptalEt, fiyatVer, odendiIsaretle, odemesizleriIptalEt, zamanlayiciBaslat,
-  paytrToken, paytrBildirim, paytrSepeti, hmac,
+  paytrToken, paytrBildirim, paytrSepeti, paytrBaglantiTesti, hmac,
   uretimListesi, ozet,
 };

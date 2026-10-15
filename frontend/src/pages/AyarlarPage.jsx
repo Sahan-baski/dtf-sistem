@@ -1,3 +1,4 @@
+import PaytrAyarlari from '../toptan/PaytrAyarlari';
 import { useState, useEffect, useRef } from 'react';
 import { ayarlarApi } from '../api';
 import { useToast } from '../context/ToastContext';
@@ -56,10 +57,10 @@ export default function AyarlarPage() {
   return (
     <div>
       <div className="page-header">
-        <div><div className="page-title">⚙️ Ayarlar</div><div className="page-sub">Kapasite ve yedekleme ayarları</div></div>
+        <div><div className="page-title">⚙️ Ayarlar</div><div className="page-sub">Kapasite, ödeme (PayTR) ve yedekleme ayarları</div></div>
       </div>
 
-      <div style={{ maxWidth:580, display:'flex', flexDirection:'column', gap:18 }}>
+      <div style={{ maxWidth:760, display:'flex', flexDirection:'column', gap:18 }}>
 
         {/* Press kapasitesi */}
         <div className="card" style={{ padding:22 }}>
@@ -84,6 +85,9 @@ export default function AyarlarPage() {
             <i className="ti ti-device-floppy"/>{kaydediliyor?'Kaydediliyor...':'Ayarları Kaydet'}
           </button>
         </div>
+
+        {/* PayTR - Miras Sipariş Alanı kartla ödeme */}
+        <PaytrAyarlari />
 
         {/* Veritabanı yedeği */}
         <div className="card" style={{ padding:22, borderTop:'3px solid var(--green)' }}>

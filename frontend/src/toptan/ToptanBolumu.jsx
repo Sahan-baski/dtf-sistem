@@ -1,11 +1,12 @@
 /**
  * Müşteri panelindeki "Miras Sipariş Alanı".
- *  - Sipariş Ver: Stok Senkron'daki tabloların listesi; seçilen tablo iki ayrı
- *    matris olarak açılır (tasarım × beden):
+ *  - Sipariş Ver: Stok Senkron'daki gibi açılır listeden tablo seçilir; seçilen
+ *    tablo iki ayrı matris olarak açılır (tasarım × beden):
  *      · Stoktan Sipariş (yeşil): eldeki stoktan; beden sütununun stoğu dolunca
  *        o sütunun boş kutuları pasifleşir.
  *      · Ön Sipariş / Üretim Talebi (turuncu): stokta olmayanlar, üretilecek.
- *    Birden fazla tablodan seçilip tek siparişte gönderilebilir.
+ *    Hücreler doldurulup "Sepete Ekle" ile sepete atılır; farklı tablolardan
+ *    eklenenler sepette birikir ve tek siparişte gönderilir.
  *  - Siparişlerim: durum, ödeme, tekrar sipariş, proforma yazdırma.
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -118,7 +119,7 @@ export default function ToptanBolumu({ kullanici, toast }) {
     }
     setMiktar(yeni);
     setSekme('ver');
-    toast(`Sipariş tabloya yüklendi${tasinan ? ` - stok yetmeyen ${tasinan} adet ön siparişe alındı` : ''}${atlanan ? `, artık satışta olmayan ${atlanan} adet atlandı` : ''}`);
+    toast(`Önceki sipariş sepete yüklendi${tasinan ? ` - stok yetmeyen ${tasinan} adet ön siparişe alındı` : ''}${atlanan ? `, artık satışta olmayan ${atlanan} adet atlandı` : ''}`);
   };
 
   if (yetkisiz) {
@@ -161,69 +162,106 @@ export default function ToptanBolumu({ kullanici, toast }) {
   );
 }
 
-// ======================= Sipariş Ver (tablo listesi + matris) =======================
+// ======================= Sipariş Ver (tablo seç → doldur → sepete ekle) =======================
 
 const SECILI_TABLO = 'miras_alan_tablo';
 
-function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast, onYenile, onSiparisOlustu, onSiparislereGit }) {
+/** İki hücre haritasını toplar ({ "urun|beden": {stok, on} }). */
+function birlestir(a, b) {
+  const s = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    const e = s[k] || { stok: 0, on: 0 };
+    s[k] = { stok: (e.stok || 0) + (v.stok || 0), on: (e.on || 0) + (v.on || 0) };
+  }
+  return s;
+}
+const adetSay = (m) => Object.values(m).reduce((t, v) => ({ stok: t.stok + (v.stok || 0), on: t.on + (v.on || 0) }), { stok: 0, on: 0 });
+
+function SiparisVer({ katalog, yapi, miktar: sepet, setMiktar: setSepet, kullanim, stokMax, toast, onYenile, onSiparisOlustu, onSiparislereGit }) {
   const { ayarlar } = katalog;
   const [tamamlaAcik, setTamamlaAcik] = useState(false);
   const [mod, setMod] = useState('stok'); // 'stok' = stoktan sipariş, 'on' = ön sipariş / üretim talebi
+  const [taslak, setTaslak] = useState({}); // açık tabloda girilen, henüz sepete eklenmemiş adetler
   const [aktifId, setAktifId] = useState(() => { try { return localStorage.getItem(SECILI_TABLO) || ''; } catch { return ''; } });
-  const kul = useMemo(() => kullanim(miktar), [miktar, kullanim]);
-  const aktif = katalog.tablolar.find(t => String(t.id) === aktifId) || katalog.tablolar[0];
-  const tabloSec = (id) => { setAktifId(String(id)); try { localStorage.setItem(SECILI_TABLO, String(id)); } catch { /* yok say */ } };
+  const aktif = katalog.tablolar.find(t => String(t.id) === String(aktifId)) || katalog.tablolar[0];
+  // Stok sınırları sepetteki + açık tablodaki adetlerin TOPLAMINA göre hesaplanır.
+  const kul = useMemo(() => kullanim(birlestir(sepet, taslak)), [sepet, taslak, kullanim]);
+  const taslakAdet = adetSay(taslak);
+
+  const tablodakiler = (m, tabloId) => Object.fromEntries(Object.entries(m).filter(([k]) => { const u = yapi.urunler.get(k.split('|')[0]); return u && String(u.tablo.id) === String(tabloId); }));
+  const tablodanCikar = (m, tabloId) => Object.fromEntries(Object.entries(m).filter(([k]) => { const u = yapi.urunler.get(k.split('|')[0]); return !u || String(u.tablo.id) !== String(tabloId); }));
+
+  const sepeteEkle = (sessiz) => {
+    const { stok, on } = adetSay(taslak);
+    if (!stok && !on) return false;
+    setSepet(s => birlestir(s, taslak));
+    setTaslak({});
+    if (!sessiz) toast(`Sepete eklendi: ${[stok && `${stok} stoktan`, on && `${on} ön sipariş`].filter(Boolean).join(', ')} ✓`);
+    return true;
+  };
+
+  const tabloAc = (id) => {
+    if (String(id) === String(aktif.id)) return;
+    if (taslakAdet.stok + taslakAdet.on > 0) {
+      if (!confirm(`Bu tabloda sepete eklenmemiş ${taslakAdet.stok + taslakAdet.on} adet var. Sepete ekleyip diğer tabloya geçilsin mi?`)) return;
+      sepeteEkle();
+    }
+    setAktifId(String(id)); setMod('stok');
+    try { localStorage.setItem(SECILI_TABLO, String(id)); } catch { /* yok say */ }
+  };
+
+  // Sepetteki bir tabloyu düzenlemek için tabloya geri al.
+  const duzenle = (tabloId) => {
+    if (String(tabloId) !== String(aktif.id) && taslakAdet.stok + taslakAdet.on > 0) sepeteEkle(true);
+    const geri = tablodakiler(sepet, tabloId);
+    setSepet(s => tablodanCikar(s, tabloId));
+    setTaslak(t => String(tabloId) === String(aktif.id) ? birlestir(t, geri) : geri);
+    setAktifId(String(tabloId));
+    try { localStorage.setItem(SECILI_TABLO, String(tabloId)); } catch { /* yok say */ }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const sepettenKaldir = (tabloId, etiket) => {
+    if (!confirm(`"${etiket}" sepetten çıkarılsın mı?`)) return;
+    setSepet(s => tablodanCikar(s, tabloId));
+  };
 
   const ayarla = (uid, b, tip, deger) => {
     let n = Math.max(0, Math.min(9999, parseInt(deger, 10) || 0));
     if (tip === 'stok') {
-      const max = stokMax(miktar, kul, uid, b);
+      const max = stokMax(taslak, kul, uid, b);
       if (n > max) {
-        toast(`Bu hücrede stokta en fazla ${max} adet var - fazlası için "Ön Sipariş / Üretim Talebi" tablosunu kullanın.`, 'error');
+        toast(`Bu hücrede stokta en fazla ${max} adet var${sepet[hk(uid, b)]?.stok ? ' (sepettekiler dahil)' : ''} - fazlası için "Ön Sipariş / Üretim Talebi" tablosunu kullanın.`, 'error');
         n = max;
       }
     }
     const k = hk(uid, b);
-    const eski = miktar[k] || { stok: 0, on: 0 };
-    const yeni = { ...miktar, [k]: { ...eski, [tip]: n } };
+    const yeni = { ...taslak, [k]: { ...(taslak[k] || { stok: 0, on: 0 }), [tip]: n } };
     if (!yeni[k].stok && !yeni[k].on) delete yeni[k];
-    setMiktar(yeni);
+    setTaslak(yeni);
   };
 
-  // "Seri" = her bedenden 1 adet. Stok tablosunda sadece stokta olan hücrelere, ön sipariş tablosunda her hücreye eklenir.
+  // "Seri" = her bedenden 1 adet. Stok tablosunda sadece stokta olan hücrelere, ön sipariş tablosunda her hücreye.
   const seriEkle = (urunIdler, bedenler) => {
-    let m = { ...miktar };
+    let m = { ...taslak };
     let eklenen = 0, atlanan = 0;
     for (const uid of urunIdler) {
       for (const b of bedenler) {
         const k = hk(uid, b);
         const h = { ...(m[k] || { stok: 0, on: 0 }) };
         if (mod === 'on') { h.on += 1; eklenen++; }
-        else if (stokMax(m, kullanim(m), uid, b) - h.stok >= 1) { h.stok += 1; eklenen++; }
+        else if (stokMax(m, kullanim(birlestir(sepet, m)), uid, b) - h.stok >= 1) { h.stok += 1; eklenen++; }
         else { atlanan++; continue; }
         m = { ...m, [k]: h };
       }
     }
-    setMiktar(m);
-    toast(`${eklenen} adet ${mod === 'on' ? 'ön siparişe' : 'stoktan'} eklendi${atlanan ? ` - stokta olmayan ${atlanan} hücre atlandı (ön sipariş tablosundan ekleyebilirsiniz)` : ''}`);
+    setTaslak(m);
+    toast(`${eklenen} adet ${mod === 'on' ? 'ön siparişe' : 'stoktan'} eklendi${atlanan ? ` - stokta olmayan ${atlanan} hücre atlandı` : ''}`);
   };
 
-  // Tablo bazında seçili adetler (kartlarda ve sekmelerde gösterilir)
-  const tabloSecimi = useMemo(() => {
-    const s = {};
-    for (const [k, v] of Object.entries(miktar)) {
-      const u = yapi.urunler.get(k.split('|')[0]);
-      if (!u) continue;
-      const t = s[u.tablo.id] || (s[u.tablo.id] = { stok: 0, on: 0 });
-      t.stok += v.stok || 0; t.on += v.on || 0;
-    }
-    return s;
-  }, [miktar, yapi]);
-
-  // ----- Özet -----
+  // ----- Sepet özeti -----
   const ozet = useMemo(() => {
     let stok = 0, on = 0, ara = 0, fiyatsiz = 0;
-    for (const [k, v] of Object.entries(miktar)) {
+    for (const [k, v] of Object.entries(sepet)) {
       const u = yapi.urunler.get(k.split('|')[0]);
       if (!u) continue;
       const adet = (v.stok || 0) + (v.on || 0);
@@ -240,59 +278,101 @@ function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast
     if (stok > 0 && stok < ayarlar.min_stok_adet) sorunlar.push(`Stoktan siparişte en az ${ayarlar.min_stok_adet} adet - ${ayarlar.min_stok_adet - stok} adet daha ekleyin`);
     if (on > 0 && on < ayarlar.min_on_siparis_adet) sorunlar.push(`Ön sipariş / üretim talebinde en az ${ayarlar.min_on_siparis_adet} adet - ${ayarlar.min_on_siparis_adet - on} adet daha ekleyin`);
     return { stok, on, adet, ara, fiyatsiz, kademe, sonraki, iskonto, toplam, sorunlar, gecerli: adet > 0 && sorunlar.length === 0 };
-  }, [miktar, yapi, ayarlar, katalog]);
+  }, [sepet, yapi, ayarlar, katalog]);
+
+  // Sepet, tablo bazında (Sepetim kartı + açılır listede ✓ işareti için)
+  const sepetTablolari = useMemo(() => {
+    const g = new Map();
+    for (const [k, v] of Object.entries(sepet)) {
+      const [uid, beden] = k.split('|');
+      const u = yapi.urunler.get(uid);
+      if (!u) continue;
+      const t = g.get(String(u.tablo.id)) || { tablo: u.tablo, stok: 0, on: 0, kalemler: [] };
+      t.stok += v.stok || 0; t.on += v.on || 0;
+      if (v.stok) t.kalemler.push({ tip: 'stok', havuz_etiket: u.tablo.etiket, urun_adi: u.ad, beden, adet: v.stok });
+      if (v.on) t.kalemler.push({ tip: 'on_siparis', havuz_etiket: u.tablo.etiket, urun_adi: u.ad, beden, adet: v.on });
+      g.set(String(u.tablo.id), t);
+    }
+    return [...g.values()];
+  }, [sepet, yapi]);
+
+  const tamamla = () => {
+    if (taslakAdet.stok + taslakAdet.on > 0) { sepeteEkle(true); toast('Açık tablodaki adetler de sepete eklendi'); }
+    setTamamlaAcik(true);
+  };
 
   if (!katalog.tablolar.length) {
     return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text2)' }}>Şu an siparişe açık ürün bulunmuyor.</div>;
   }
 
-  const secim = tabloSecimi[aktif.id] || { stok: 0, on: 0 };
+  const stokToplami = (t) => t.bedenler.reduce((s, b) => s + (t.stoklar[b] || 0), 0);
+  const aktifTaslak = adetSay(tablodakiler(taslak, aktif.id));
 
   return (
     <div>
-      {/* Tablo listesi */}
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', margin: '0 0 8px' }}>Ürün tabloları ({katalog.tablolar.length})</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginBottom: 18 }}>
-        {katalog.tablolar.map(t => {
-          const secili = String(t.id) === String(aktif.id);
-          const stokToplam = t.bedenler.reduce((s, b) => s + (t.stoklar[b] || 0), 0);
-          const sec = tabloSecimi[t.id];
-          return (
-            <button key={t.id} onClick={() => tabloSec(t.id)}
-              style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 'var(--r-sm, 10px)', cursor: 'pointer', background: secili ? 'color-mix(in srgb, var(--indigo) 8%, var(--bg))' : 'var(--bg)', border: `1.5px solid ${secili ? 'var(--indigo)' : 'var(--border2)'}`, color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.3 }}>{t.etiket}</span>
-              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t.urunler.length} tasarım · {t.bedenler.length} beden · <b style={{ color: stokToplam ? 'var(--green)' : 'var(--text3)' }}>{stokToplam} stokta</b></span>
-              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t.birim_fiyat > 0 ? <>Birim fiyat <b style={{ color: 'var(--text)' }}>{tl(t.birim_fiyat)}</b></> : <span style={{ color: 'var(--purple, #7e22ce)' }}>Fiyat sipariş sonrası bildirilir</span>}</span>
-              {sec && (sec.stok + sec.on) > 0 && (
-                <span style={{ fontSize: 11.5, fontWeight: 700 }}>
-                  Seçili: {sec.stok > 0 && <span style={{ color: 'var(--green)' }}>{sec.stok} stoktan</span>}{sec.stok > 0 && sec.on > 0 && ' · '}{sec.on > 0 && <span style={{ color: 'var(--amber)' }}>{sec.on} ön sipariş</span>}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      {/* Tablo seçimi - Stok Senkron'daki gibi açılır listeden */}
+      <div className="card" style={{ padding: '14px 18px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <label className="form-label" style={{ margin: 0, fontSize: 13 }}>Tablo:</label>
+        <select className="form-input" style={{ width: 'auto', minWidth: 280, maxWidth: '100%', flex: '1 1 280px', fontWeight: 600 }} value={String(aktif.id)} onChange={e => tabloAc(e.target.value)}>
+          {katalog.tablolar.map(t => {
+            const sp = sepetTablolari.find(x => String(x.tablo.id) === String(t.id));
+            return <option key={t.id} value={String(t.id)}>{t.etiket} — {stokToplami(t)} stokta{sp ? ` · ✓ sepette ${sp.stok + sp.on}` : ''}</option>;
+          })}
+        </select>
+        <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>
+          {aktif.urunler.length} tasarım · {aktif.bedenler.length} beden ·{' '}
+          {aktif.birim_fiyat > 0 ? <>birim <b style={{ color: 'var(--text)' }}>{tl(aktif.birim_fiyat)}</b></> : <span style={{ color: 'var(--purple, #7e22ce)' }}>fiyat sipariş sonrası bildirilir</span>}
+        </div>
       </div>
 
       {/* Stoktan / Ön sipariş seçimi */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 12 }}>
         <ModSekmesi aktif={mod === 'stok'} renk="var(--green)" ikon="ti-package" onClick={() => setMod('stok')}
-          baslik="Stoktan Sipariş" alt={`Eldeki stoktan · en az ${ayarlar.min_stok_adet} adet · ödeme sonrası hemen gönderilir`} adet={secim.stok} />
+          baslik="Stoktan Sipariş" alt={`Eldeki stoktan · en az ${ayarlar.min_stok_adet} adet · ödeme sonrası hemen gönderilir`} adet={aktifTaslak.stok} />
         <ModSekmesi aktif={mod === 'on'} renk="var(--amber)" ikon="ti-tools" onClick={() => setMod('on')}
-          baslik="Ön Sipariş / Üretim Talebi" alt={`Stokta olmayanlar üretilir · en az ${ayarlar.min_on_siparis_adet} adet${ayarlar.on_siparis_sure ? ` · ${ayarlar.on_siparis_sure}` : ''}`} adet={secim.on} />
+          baslik="Ön Sipariş / Üretim Talebi" alt={`Stokta olmayanlar üretilir · en az ${ayarlar.min_on_siparis_adet} adet${ayarlar.on_siparis_sure ? ` · ${ayarlar.on_siparis_sure}` : ''}`} adet={aktifTaslak.on} />
       </div>
 
-      <MatrisTablosu key={`${aktif.id}|${mod}`} tablo={aktif} mod={mod} miktar={miktar} kul={kul} stokMax={stokMax}
-        ayarla={ayarla} seriEkle={seriEkle} onModDegis={setMod} />
+      <MatrisTablosu key={`${aktif.id}|${mod}`} tablo={aktif} mod={mod} taslak={taslak} sepet={sepet} kul={kul} stokMax={stokMax}
+        ayarla={ayarla} seriEkle={seriEkle} onModDegis={setMod}
+        altBar={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--bg2)' }}>
+            <div style={{ flex: 1, minWidth: 180, fontSize: 13, color: 'var(--text2)' }}>
+              {aktifTaslak.stok + aktifTaslak.on > 0
+                ? <>Bu tabloda seçili: {aktifTaslak.stok > 0 && <b style={{ color: 'var(--green)' }}>{aktifTaslak.stok} stoktan</b>}{aktifTaslak.stok > 0 && aktifTaslak.on > 0 && ' · '}{aktifTaslak.on > 0 && <b style={{ color: 'var(--amber)' }}>{aktifTaslak.on} ön sipariş</b>}</>
+                : 'Hücrelere adet yazın, sonra "Sepete Ekle"ye basın.'}
+            </div>
+            {aktifTaslak.stok + aktifTaslak.on > 0 && <button className="btn btn-secondary btn-sm" onClick={() => setTaslak({})}>Vazgeç</button>}
+            <button className="btn btn-primary" disabled={!(aktifTaslak.stok + aktifTaslak.on)} onClick={() => sepeteEkle()}>
+              <i className="ti ti-shopping-cart-plus" />Sepete Ekle
+            </button>
+          </div>
+        } />
 
-      <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.6, margin: '-6px 0 14px' }}>
-        {(ayarlar.kademeler || []).length > 0 && <>Adet indirimi (tüm tablolar toplamı): {ayarlar.kademeler.map(k => `${k.adet}+ adette %${k.indirim}`).join(', ')}. </>}
+      {/* Sepetim */}
+      <div className="card" style={{ padding: 0, marginBottom: 14, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 18px', borderBottom: sepetTablolari.length ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <i className="ti ti-shopping-cart" style={{ fontSize: 18, color: 'var(--indigo)' }} />
+          <b style={{ fontSize: 15 }}>Sepetim</b>
+          <span style={{ fontSize: 12.5, color: 'var(--text2)' }}>{ozet.adet ? `${ozet.adet} adet · ${sepetTablolari.length} tablo` : 'boş'}</span>
+          {ozet.adet > 0 && <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { if (confirm('Sepet tamamen boşaltılsın mı?')) setSepet({}); }}>Sepeti boşalt</button>}
+        </div>
+        {!sepetTablolari.length && <div style={{ padding: '4px 18px 14px', fontSize: 13, color: 'var(--text3)' }}>Bir tablo seçip hücrelere adet girin ve "Sepete Ekle"ye basın. Farklı tablolardan ekleyip tek siparişte gönderebilirsiniz.</div>}
+        {sepetTablolari.map(g => (
+          <SepetSatiri key={g.tablo.id} g={g} onDuzenle={() => duzenle(g.tablo.id)} onKaldir={() => sepettenKaldir(g.tablo.id, g.tablo.etiket)} />
+        ))}
+      </div>
+
+      <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.6, margin: '0 0 14px' }}>
+        {(ayarlar.kademeler || []).length > 0 && <>Adet indirimi (sepet toplamı): {ayarlar.kademeler.map(k => `${k.adet}+ adette %${k.indirim}`).join(', ')}. </>}
         {katalog.musteri.iskonto > 0 && <>Size özel ek indirim: <b style={{ color: 'var(--green)' }}>%{katalog.musteri.iskonto}</b>. </>}
         {ayarlar.fiyat_notu}
       </div>
 
-      {/* Yapışkan özet çubuğu */}
+      {/* Yapışkan sepet çubuğu */}
       <div style={{ position: 'sticky', bottom: 0, zIndex: 20, marginTop: 10 }}>
         <div className="card" style={{ padding: '12px 18px', boxShadow: '0 -4px 20px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+          <i className="ti ti-shopping-cart" style={{ fontSize: 22, color: 'var(--indigo)' }} />
           <OzetSayaci ad="Stoktan" adet={ozet.stok} min={ayarlar.min_stok_adet} renk="var(--green)" />
           <OzetSayaci ad="Ön sipariş" adet={ozet.on} min={ayarlar.min_on_siparis_adet} renk="var(--amber)" />
           <div style={{ flex: 1, minWidth: 200 }}>
@@ -308,11 +388,11 @@ function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast
                   {ozet.sonraki && <span style={{ color: 'var(--green)' }}>· {ozet.sonraki.adet - ozet.adet} adet daha ekleyin, %{ozet.sonraki.indirim} indirim kazanın</span>}
                 </div>
               </>
-            ) : <div style={{ fontSize: 13, color: 'var(--text3)' }}>Tablodaki kutulara adet yazarak siparişinizi oluşturun. Birden fazla tablodan seçebilirsiniz.</div>}
+            ) : <div style={{ fontSize: 13, color: 'var(--text3)' }}>Sepetiniz boş.</div>}
+            {taslakAdet.stok + taslakAdet.on > 0 && <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 2 }}>• Açık tabloda sepete eklenmemiş {taslakAdet.stok + taslakAdet.on} adet var</div>}
             {ozet.sorunlar.map(s => <div key={s} style={{ fontSize: 12, color: 'var(--red)', marginTop: 2 }}>• {s}</div>)}
           </div>
-          {ozet.adet > 0 && <button className="btn btn-secondary btn-sm" onClick={() => { if (confirm('Tüm tablolardaki adetler silinsin mi?')) setMiktar({}); }}>Temizle</button>}
-          <button className="btn btn-primary" disabled={!ozet.gecerli} onClick={() => setTamamlaAcik(true)}>
+          <button className="btn btn-primary" disabled={!(ozet.adet + taslakAdet.stok + taslakAdet.on)} onClick={tamamla}>
             <i className="ti ti-arrow-right" />Siparişi Tamamla
           </button>
         </div>
@@ -320,12 +400,36 @@ function SiparisVer({ katalog, yapi, miktar, setMiktar, kullanim, stokMax, toast
 
       {tamamlaAcik && (
         <SiparisTamamlaModal
-          katalog={katalog} yapi={yapi} miktar={miktar} ozet={ozet} toast={toast}
+          katalog={katalog} yapi={yapi} miktar={sepet} ozet={ozet} toast={toast}
           onKapat={(olustu) => { setTamamlaAcik(false); if (olustu) onSiparislereGit(); }}
-          onOlustu={() => { setMiktar({}); onSiparisOlustu(); }}
+          onOlustu={() => { setSepet({}); onSiparisOlustu(); }}
           onStokDegisti={onYenile}
         />
       )}
+    </div>
+  );
+}
+
+function SepetSatiri({ g, onDuzenle, onKaldir }) {
+  const [acik, setAcik] = useState(false);
+  const { tablo } = g;
+  return (
+    <div style={{ borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px', flexWrap: 'wrap' }}>
+        <button onClick={() => setAcik(a => !a)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 200, textAlign: 'left' }}>
+          <i className={`ti ${acik ? 'ti-chevron-down' : 'ti-chevron-right'}`} />
+          <span>
+            <b style={{ fontSize: 13.5 }}>{tablo.etiket}</b>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--text2)' }}>
+              {g.stok > 0 && <span style={{ color: 'var(--green)', fontWeight: 700 }}>{g.stok} stoktan</span>}{g.stok > 0 && g.on > 0 && ' · '}{g.on > 0 && <span style={{ color: 'var(--amber)', fontWeight: 700 }}>{g.on} ön sipariş</span>}
+              {' · '}{tablo.birim_fiyat > 0 ? `${tl((g.stok + g.on) * tablo.birim_fiyat)} (indirim öncesi)` : 'fiyat bildirilecek'}
+            </span>
+          </span>
+        </button>
+        <button className="btn btn-secondary btn-sm" onClick={onDuzenle}><i className="ti ti-edit" />Düzenle</button>
+        <button className="btn btn-secondary btn-sm" onClick={onKaldir} style={{ color: 'var(--red)' }}><i className="ti ti-trash" />Kaldır</button>
+      </div>
+      {acik && <div style={{ padding: '0 18px 8px' }}><SiparisMatrisi kalemler={g.kalemler} /></div>}
     </div>
   );
 }
@@ -348,33 +452,30 @@ function ModSekmesi({ aktif, renk, ikon, baslik, alt, adet, onClick }) {
 function OzetSayaci({ ad, adet, min, renk }) {
   const tamam = adet === 0 || adet >= min;
   return (
-    <div style={{ minWidth: 92 }}>
+    <div style={{ minWidth: 86 }}>
       <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase' }}>{ad}</div>
       <div style={{ fontSize: 18, fontWeight: 800, color: adet ? renk : 'var(--text3)' }}>{adet} <span style={{ fontSize: 12, fontWeight: 500, color: tamam ? 'var(--text3)' : 'var(--red)' }}>/ min {min}</span></div>
     </div>
   );
 }
 
-function MatrisTablosu({ tablo, mod, miktar, kul, stokMax, ayarla, seriEkle, onModDegis }) {
+function MatrisTablosu({ tablo, mod, taslak, sepet, kul, stokMax, ayarla, seriEkle, onModDegis, altBar }) {
   const { bedenler } = tablo;
   const stokModu = mod === 'stok';
   const tip = stokModu ? 'stok' : 'on';
   const renk = stokModu ? 'var(--green)' : 'var(--amber)';
-  const sutunToplam = (b) => tablo.urunler.reduce((s, u) => s + ((miktar[hk(u.id, b)] || {})[tip] || 0), 0);
+  const sutunToplam = (b) => tablo.urunler.reduce((s, u) => s + ((taslak[hk(u.id, b)] || {})[tip] || 0), 0);
   const kalan = (b) => (tablo.stoklar[b] || 0) - (kul.sutun[`${tablo.id}|${b}`] || 0);
   const stilTd = { padding: '6px 5px', borderBottom: '1px solid var(--border)', textAlign: 'center' };
   const solYapiskan = { position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1 };
   const hicStokYok = stokModu && bedenler.every(b => !(tablo.stoklar[b] > 0));
 
   return (
-    <div className="card" style={{ padding: 0, marginBottom: 20, overflow: 'hidden', borderTop: `3px solid ${renk}` }}>
+    <div className="card" style={{ padding: 0, marginBottom: 16, overflow: 'hidden', borderTop: `3px solid ${renk}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', flexWrap: 'wrap', gap: 10, borderBottom: '1px solid var(--border)' }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 800 }}>{tablo.etiket}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>
-            <b style={{ color: renk }}>{stokModu ? 'Stoktan sipariş' : 'Ön sipariş / üretim talebi'}</b> · {tablo.urunler.length} tasarım ·{' '}
-            {tablo.birim_fiyat > 0 ? <>birim fiyat <b style={{ color: 'var(--text)' }}>{tl(tablo.birim_fiyat)}</b></> : 'fiyat sipariş sonrası bildirilir'}
-          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--text2)' }}><b style={{ color: renk }}>{stokModu ? 'Stoktan sipariş' : 'Ön sipariş / üretim talebi'}</b> · {tablo.urunler.length} tasarım</div>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={() => seriEkle(tablo.urunler.map(u => String(u.id)), bedenler)}
           title={stokModu ? 'Her tasarımdan, stokta olan her bedenden 1\'er adet ekler' : 'Her tasarımdan, her bedenden 1\'er adet üretim talebi ekler'}>
@@ -410,7 +511,7 @@ function MatrisTablosu({ tablo, mod, miktar, kul, stokMax, ayarla, seriEkle, onM
           <tbody>
             {tablo.urunler.map(u => {
               const uid = String(u.id);
-              const satirToplam = bedenler.reduce((s, b) => s + ((miktar[hk(uid, b)] || {})[tip] || 0), 0);
+              const satirToplam = bedenler.reduce((s, b) => s + ((taslak[hk(uid, b)] || {})[tip] || 0), 0);
               return (
                 <tr key={uid}>
                   <td style={{ ...stilTd, ...solYapiskan, textAlign: 'left' }}>
@@ -425,16 +526,18 @@ function MatrisTablosu({ tablo, mod, miktar, kul, stokMax, ayarla, seriEkle, onM
                     </div>
                   </td>
                   {bedenler.map(b => {
-                    const h = miktar[hk(uid, b)] || { stok: 0, on: 0 };
+                    const k = hk(uid, b);
+                    const h = taslak[k] || { stok: 0, on: 0 };
+                    const sepette = (sepet[k] || {})[tip] || 0;
                     if (!stokModu) {
                       return (
                         <td key={b} style={stilTd}>
                           <HucreGirdisi deger={h.on} renk={renk} baslik="Üretim talebi (adet)" onChange={v => ayarla(uid, b, 'on', v)} />
-                          {h.stok > 0 && <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 2 }}>+{h.stok} stoktan</div>}
+                          {sepette > 0 && <div style={{ fontSize: 10, color: 'var(--indigo)', marginTop: 2 }}>sepette {sepette}</div>}
                         </td>
                       );
                     }
-                    const max = stokMax(miktar, kul, uid, b);
+                    const max = stokMax(taslak, kul, uid, b);
                     const pasif = max <= 0 && !h.stok;
                     return (
                       <td key={b} style={{ ...stilTd, background: kalan(b) <= 0 ? 'rgba(217,119,6,0.04)' : undefined }}>
@@ -442,7 +545,7 @@ function MatrisTablosu({ tablo, mod, miktar, kul, stokMax, ayarla, seriEkle, onM
                           baslik={pasif ? (kalan(b) > 0 ? 'Bu tasarımın baskı stoğu doldu - ön sipariş tablosunu kullanın' : 'Bu bedende stok kalmadı - ön sipariş tablosunu kullanın') : `Stoktan (en fazla ${max})`}
                           onChange={v => ayarla(uid, b, 'stok', v)} />
                         <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-                          {pasif ? 'yok' : `en fazla ${max}`}{h.on > 0 && <span style={{ color: 'var(--amber)' }}> · +{h.on} ön</span>}
+                          {pasif ? 'yok' : `en fazla ${max}`}{sepette > 0 && <span style={{ color: 'var(--indigo)' }}> · sepette {sepette}</span>}
                         </div>
                       </td>
                     );
@@ -467,6 +570,7 @@ function MatrisTablosu({ tablo, mod, miktar, kul, stokMax, ayarla, seriEkle, onM
           <button onClick={() => onModDegis('on')} style={{ border: 'none', background: 'none', color: 'var(--amber)', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12 }}>Ön Sipariş / Üretim Talebi</button> tablosunu kullanın.
         </div>
       )}
+      {altBar}
     </div>
   );
 }

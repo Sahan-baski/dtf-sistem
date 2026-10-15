@@ -163,6 +163,8 @@ export const toptanApi = {
     ayarlar: () => api.get('/toptan/admin/ayarlar'),
     ayarlariKaydet: (d) => api.put('/toptan/admin/ayarlar', d),
     paytrKaydet: (d) => api.put('/toptan/admin/paytr', d),
+    paytrGetir: () => api.get('/toptan/admin/paytr'),
+    paytrTest: () => api.post('/toptan/admin/paytr/test'),
     havuzGuncelle: (id, d) => api.put(`/toptan/admin/havuzlar/${id}`, d),
     musteriGuncelle: (id, d) => api.patch(`/toptan/admin/musteriler/${id}`, d),
   },

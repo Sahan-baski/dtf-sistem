@@ -9,6 +9,7 @@ import { toptanApi } from '../api';
 import { useToast } from '../context/ToastContext';
 import { DURUMLAR, DurumRozeti, SiparisMatrisi, proformaYazdir, tl, tarih } from '../toptan/ortak';
 import ToptanBolumu from '../toptan/ToptanBolumu';
+import PaytrAyarlari from '../toptan/PaytrAyarlari';
 
 const FILTRELER = [
   { key: 'fiyat_bekliyor', ad: 'Fiyat Bekleyen', ipucu: 'Fiyatı girilmemiş tablodan gelen - fiyat bildirmen gerekiyor' },
@@ -33,7 +34,7 @@ export default function ToptanPage({ onSayacDegisti }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
-        {[['siparisler', 'Siparişler', 'ti-list-details'], ['uretim', 'Ön Sipariş Üretim Listesi', 'ti-printer'], ['onizleme', 'Müşteri Görünümü', 'ti-eye'], ['ayarlar', 'Tablolar & Ayarlar', 'ti-settings']].map(([k, ad, ikon]) => (
+        {[['siparisler', 'Siparişler', 'ti-list-details'], ['uretim', 'Ön Sipariş Üretim Listesi', 'ti-printer'], ['onizleme', 'Müşteri Görünümü', 'ti-eye'], ['ayarlar', 'Tablolar & Ayarlar', 'ti-settings'], ['odeme', 'Ödeme / PayTR', 'ti-credit-card']].map(([k, ad, ikon]) => (
           <button key={k} className={`filter-btn ${sekme === k ? 'active' : ''}`} onClick={() => setSekme(k)}
             style={{ padding: '7px 14px', borderRadius: 999, border: '1px solid var(--border2)', background: sekme === k ? 'var(--indigo)' : 'var(--bg)', color: sekme === k ? '#fff' : 'var(--text2)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
             <i className={`ti ${ikon}`} /> {ad}
@@ -51,6 +52,7 @@ export default function ToptanPage({ onSayacDegisti }) {
         </div>
       )}
       {sekme === 'ayarlar' && <Ayarlar />}
+      {sekme === 'odeme' && <div style={{ maxWidth: 820 }}><PaytrAyarlari /></div>}
     </div>
   );
 }
@@ -345,12 +347,10 @@ function Ayarlar() {
   const toast = useToast();
   const [veri, setVeri] = useState(null);
   const [genel, setGenel] = useState(null);
-  const [paytr, setPaytr] = useState({ merchant_id: '', merchant_key: '', merchant_salt: '', test_modu: true });
 
   const yukle = useCallback(async () => {
     const r = await toptanApi.admin.ayarlar();
     setVeri(r.data); setGenel(r.data.ayarlar);
-    setPaytr({ merchant_id: r.data.paytr.merchant_id, merchant_key: '', merchant_salt: '', test_modu: r.data.paytr.test_modu });
   }, []);
   useEffect(() => { yukle().catch(() => toast('Ayarlar yüklenemedi', 'error')); }, [yukle]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -358,10 +358,6 @@ function Ayarlar() {
 
   const genelKaydet = async () => {
     try { setGenel((await toptanApi.admin.ayarlariKaydet(genel)).data); toast('Toptan ayarları kaydedildi ✓'); }
-    catch (e) { toast(e.response?.data?.hata || 'Kaydedilemedi', 'error'); }
-  };
-  const paytrKaydet = async () => {
-    try { await toptanApi.admin.paytrKaydet(paytr); toast('PayTR bilgileri kaydedildi ✓'); yukle(); }
     catch (e) { toast(e.response?.data?.hata || 'Kaydedilemedi', 'error'); }
   };
   const havuzKaydet = async (h, d) => {
@@ -439,26 +435,8 @@ function Ayarlar() {
         <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={genelKaydet}><i className="ti ti-device-floppy" />Kaydet</button>
       </div>
 
-      {/* PayTR */}
-      <div className="card" style={{ padding: 18 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>PayTR ile kartla ödeme {veri.paytr.hazir ? <span className="badge badge-green">bağlı</span> : <span className="badge badge-gray">bağlı değil</span>}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.6 }}>
-          Bilgiler PayTR Mağaza Paneli → <b>Bilgi</b> sayfasında. Ayrıca PayTR panelinde <b>Ayarlar → Bildirim URL</b> alanına şu adresi yapıştır:
-          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            <input className="form-input" readOnly value={veri.bildirim_url} onFocus={e => e.target.select()} style={{ fontFamily: 'monospace', fontSize: 12 }} />
-            <button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard?.writeText(veri.bildirim_url).then(() => toast('Kopyalandı'))}>Kopyala</button>
-          </div>
-          Önce <b>test modunda</b> bir sipariş verip ödeme yaparak dene; çalıştığını görünce test modunu kapat.
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-          <div><label className="form-label">Mağaza No (merchant_id)</label><input className="form-input" value={paytr.merchant_id} onChange={e => setPaytr(p => ({ ...p, merchant_id: e.target.value }))} /></div>
-          <div><label className="form-label">Mağaza Parola (merchant_key)</label><input className="form-input" type="password" autoComplete="new-password" value={paytr.merchant_key} placeholder={veri.paytr.merchant_key_girildi ? '•••••• girildi - değiştirmek için yaz' : ''} onChange={e => setPaytr(p => ({ ...p, merchant_key: e.target.value }))} /></div>
-          <div><label className="form-label">Mağaza Gizli Anahtar (merchant_salt)</label><input className="form-input" type="password" autoComplete="new-password" value={paytr.merchant_salt} placeholder={veri.paytr.merchant_salt_girildi ? '•••••• girildi - değiştirmek için yaz' : ''} onChange={e => setPaytr(p => ({ ...p, merchant_salt: e.target.value }))} /></div>
-        </div>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, fontSize: 13, cursor: 'pointer' }}>
-          <input type="checkbox" checked={paytr.test_modu} onChange={e => setPaytr(p => ({ ...p, test_modu: e.target.checked }))} />Test modu (gerçek para çekilmez)
-        </label>
-        <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={paytrKaydet}><i className="ti ti-device-floppy" />PayTR bilgilerini kaydet</button>
+      <div className="card" style={{ padding: 14, fontSize: 13, color: 'var(--text2)' }}>
+        <i className="ti ti-credit-card" /> Kartla ödeme (PayTR) bağlantısı <b>"Ödeme / PayTR"</b> sekmesinde.
       </div>
     </div>
   );

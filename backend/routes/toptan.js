@@ -221,6 +221,16 @@ admin.put('/ayarlar', async (req, res) => {
   try { res.json(await toptan.ayarlariKaydet(req.body || {})); } catch (e) { hataYaniti(res, e); }
 });
 
+admin.get('/paytr', async (req, res) => {
+  try {
+    res.json({ paytr: toptan.paytrGorunumu(await toptan.paytrGetir()), bildirim_url: `${tabanUrl(req)}/api/toptan/paytr-bildirim` });
+  } catch (e) { hataYaniti(res, e); }
+});
+
+admin.post('/paytr/test', async (req, res) => {
+  try { res.json(await toptan.paytrBaglantiTesti({ ip: istemciIp(req), tabanUrl: tabanUrl(req) })); } catch (e) { hataYaniti(res, e); }
+});
+
 admin.put('/paytr', async (req, res) => {
   try { res.json(await toptan.paytrKaydet(req.body || {})); } catch (e) { hataYaniti(res, e); }
 });
